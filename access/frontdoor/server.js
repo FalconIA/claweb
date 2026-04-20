@@ -507,14 +507,66 @@ function recentSnapshotPath(key) {
 let loginConfigCache = null;
 let loginConfigMtime = 0;
 
+// Parse CLAWEB_LOGIN_<N>_* environment variables into a config object.
+// Supported keys per slot:
+//   CLAWEB_LOGIN_<N>_NAME          → identity key (required, skip slot if missing)
+//   CLAWEB_LOGIN_<N>_DISPLAY_NAME  → displayName
+//   CLAWEB_LOGIN_<N>_PASSPHRASE    → single passphrase  (mutually additive with _PASSPHRASES)
+//   CLAWEB_LOGIN_<N>_PASSPHRASES   → comma-separated passphrases
+//   CLAWEB_LOGIN_<N>_USER_ID       → userId
+//   CLAWEB_LOGIN_<N>_ROOM_ID       → roomId
+//   CLAWEB_LOGIN_<N>_CLIENT_ID     → clientId
+function parseLoginEnvVars() {
+  const cfg = {};
+  const slots = new Set();
+  const prefix = "CLAWEB_LOGIN_";
+  for (const key of Object.keys(ENV)) {
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    const m = rest.match(/^(\d+)_/);
+    if (m) slots.add(m[1]);
+  }
+  for (const n of [...slots].sort((a, b) => Number(a) - Number(b))) {
+    const p = `${prefix}${n}_`;
+    const name = (ENV[`${p}NAME`] || "").trim();
+    if (!name) continue;
+    const passphrases = [];
+    const single = (ENV[`${p}PASSPHRASE`] || "").trim();
+    if (single) passphrases.push(single);
+    const multi = (ENV[`${p}PASSPHRASES`] || "").trim();
+    if (multi) passphrases.push(...multi.split(",").map((s) => s.trim()).filter(Boolean));
+    cfg[name] = {
+      displayName: (ENV[`${p}DISPLAY_NAME`] || "").trim() || name,
+      passphrases,
+      userId: (ENV[`${p}USER_ID`] || "").trim() || `user-${name}`,
+      roomId: (ENV[`${p}ROOM_ID`] || "").trim(),
+      clientId: (ENV[`${p}CLIENT_ID`] || "").trim() || name,
+    };
+  }
+  return Object.keys(cfg).length ? cfg : null;
+}
+
+const loginEnvConfig = parseLoginEnvVars();
+
 async function loadLoginConfig() {
-  const stat = await fsp.stat(LOGIN_CONFIG_PATH);
-  if (loginConfigCache && stat.mtimeMs === loginConfigMtime) return loginConfigCache;
-  const raw = await fsp.readFile(LOGIN_CONFIG_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  loginConfigCache = parsed;
-  loginConfigMtime = stat.mtimeMs;
-  return parsed;
+  // env vars always merged on top of file config (env wins on key collision)
+  let fileCfg = {};
+  try {
+    const stat = await fsp.stat(LOGIN_CONFIG_PATH);
+    if (!loginConfigCache || stat.mtimeMs !== loginConfigMtime) {
+      const raw = await fsp.readFile(LOGIN_CONFIG_PATH, "utf8");
+      loginConfigCache = JSON.parse(raw);
+      loginConfigMtime = stat.mtimeMs;
+    }
+    fileCfg = loginConfigCache || {};
+  } catch {
+    // file missing / unreadable – not an error, just use empty base
+  }
+  const merged = loginEnvConfig ? { ...fileCfg, ...loginEnvConfig } : fileCfg;
+  if (!Object.keys(merged).length) {
+    log("warn", "no login identities configured (neither file nor CLAWEB_LOGIN_* env vars)");
+  }
+  return merged;
 }
 
 function findSessionByPassphrase(cfg, passphrase) {

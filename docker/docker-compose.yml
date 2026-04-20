@@ -1,0 +1,39 @@
+# Run from the project root:
+#   docker compose -f docker/docker-compose.yml up
+
+services:
+  frontdoor:
+    build:
+      context: ..            # project root (needed to include clients/browser)
+      dockerfile: docker/Dockerfile
+    image: falconia/claweb-frontdoor:latest
+    restart: unless-stopped
+    ports:
+      - "18081:18081"
+    environment:
+      # Point to your OpenClaw claweb upstream; override via .env or env_file
+      CLAWEB_UPSTREAM_WS: ${CLAWEB_UPSTREAM_WS:-ws://host.docker.internal:18999}
+      # Pass token directly OR mount a file and set CLAWEB_UPSTREAM_TOKEN_FILE
+      CLAWEB_UPSTREAM_TOKEN: ${CLAWEB_UPSTREAM_TOKEN:-}
+      CLAWEB_UI_TITLE: ${CLAWEB_UI_TITLE:-}
+      CLAWEB_UI_CHARACTER_NAME: ${CLAWEB_UI_CHARACTER_NAME:-}
+      CLAWEB_UI_AVATAR: ${CLAWEB_UI_AVATAR:-}
+      CLAWEB_LOG_LEVEL: ${CLAWEB_LOG_LEVEL:-info}
+      # Login via env vars (alternative to mounting claweb-login.json):
+      # CLAWEB_LOGIN_1_NAME: guest-a
+      # CLAWEB_LOGIN_1_DISPLAY_NAME: Guest A
+      # CLAWEB_LOGIN_1_PASSPHRASE: change-me
+      # CLAWEB_LOGIN_1_USER_ID: user-guest-a
+      # CLAWEB_LOGIN_1_CLIENT_ID: guest-a
+      # CLAWEB_LOGIN_2_NAME: guest-b
+      # CLAWEB_LOGIN_2_PASSPHRASES: pass1,pass2
+    volumes:
+      # persistent data
+      - ./data/history:/app/data/history
+      - ./data/media:/app/data/media
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18081/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

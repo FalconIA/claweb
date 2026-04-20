@@ -1,0 +1,162 @@
+# CLAWeb Frontdoor – Kubernetes manifests
+# Apply with:  kubectl apply -f docker/k8s.yml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: claweb
+
+---
+# ── ConfigMap: non-sensitive env vars + login config ─────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontdoor-config
+  namespace: claweb
+data:
+  # Only values that differ from Dockerfile defaults or are k8s-specific.
+  # Override others (BIND, PORT, CLAWEB_STATIC_ROOT, etc.) by adding them here.
+  CLAWEB_UPSTREAM_WS: "ws://openclaw-claweb:18999"   # adjust to your upstream Service
+  # CLAWEB_LOG_LEVEL: info
+  # CLAWEB_UI_TITLE: ""
+  # CLAWEB_UI_CHARACTER_NAME: ""
+  # CLAWEB_UI_AVATAR: ""
+  # Login via env vars (alternative to or merged with claweb-login.json ConfigMap):
+  # CLAWEB_LOGIN_1_NAME: guest-a
+  # CLAWEB_LOGIN_1_DISPLAY_NAME: Guest A
+  # CLAWEB_LOGIN_1_PASSPHRASE: change-me
+  # CLAWEB_LOGIN_1_USER_ID: user-guest-a
+  # CLAWEB_LOGIN_1_CLIENT_ID: guest-a
+
+  # Login config file content (optional if using CLAWEB_LOGIN_* env vars above)
+  claweb-login.json: |
+    {
+      "guest-a": {
+        "displayName": "Guest A",
+        "passphrases": ["change-me"],
+        "userId": "user-guest-a",
+        "roomId": "",
+        "clientId": "guest-a"
+      }
+    }
+
+---
+# ── Secret: upstream auth token ──────────────────────────────────────────────
+# Create imperatively (recommended, keeps token out of source control):
+#   kubectl create secret generic frontdoor-secret \
+#     --namespace claweb \
+#     --from-literal=CLAWEB_UPSTREAM_TOKEN=<your-token>
+#
+# OR apply this file after replacing the placeholder (base64-encode your token):
+#   echo -n 'your-token' | base64
+apiVersion: v1
+kind: Secret
+metadata:
+  name: frontdoor-secret
+  namespace: claweb
+type: Opaque
+stringData:
+  CLAWEB_UPSTREAM_TOKEN: "change-me"   # ← replace before applying
+
+---
+# ── Deployment ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontdoor
+  namespace: claweb
+  labels:
+    app: frontdoor
+spec:
+  replicas: 1          # stateful data dirs; scale only if PVC supports RWX
+  selector:
+    matchLabels:
+      app: frontdoor
+  strategy:
+    type: Recreate     # safe with ReadWriteOnce PVCs
+  template:
+    metadata:
+      labels:
+        app: frontdoor
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: "<node-name>"   # ← replace with actual node name
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: frontdoor
+          image: <registry>/falconia/claweb-frontdoor:latest   # ← replace with your image
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 18081
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: frontdoor-config
+            - secretRef:
+                name: frontdoor-secret
+          volumeMounts:
+            - name: history
+              mountPath: /app/data/history
+            - name: media
+              mountPath: /app/data/media
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # server writes to /app/data at runtime
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: history
+          hostPath:
+            path: /data/claweb/history   # ← adjust to actual node path
+            type: DirectoryOrCreate
+        - name: media
+          hostPath:
+            path: /data/claweb/media     # ← adjust to actual node path
+            type: DirectoryOrCreate
+
+---
+# ── Service (ClusterIP) ───────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontdoor
+  namespace: claweb
+  labels:
+    app: frontdoor
+spec:
+  selector:
+    app: frontdoor
+  ports:
+    - name: http
+      port: 18081
+      targetPort: http
+      protocol: TCP
