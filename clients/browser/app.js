@@ -723,6 +723,18 @@ function isMarkdownFenceLine(line) {
   return /^\s*```/.test(String(line || ""));
 }
 
+function isMarkdownTableLine(line) {
+  return /^\s*\|/.test(String(line || ""));
+}
+
+function isMarkdownTableSeparatorLine(line) {
+  return /^\s*\|[\s|:=-]+\|\s*$/.test(String(line || ""));
+}
+
+function parseTableCells(line) {
+  return String(line).replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+}
+
 function renderRichTextFragment(text) {
   const source = String(text || "").replace(/\r\n?/g, "\n");
   const lines = source.split("\n");
@@ -772,6 +784,56 @@ function renderRichTextFragment(text) {
       continue;
     }
 
+    if (isMarkdownTableLine(line)) {
+      const tableLines = [];
+      while (i < lines.length && isMarkdownTableLine(lines[i])) {
+        tableLines.push(lines[i]);
+        i += 1;
+      }
+
+      const table = document.createElement("table");
+      let thead = null;
+      let tbody = null;
+      let headerDone = false;
+
+      for (const tl of tableLines) {
+        if (isMarkdownTableSeparatorLine(tl)) {
+          headerDone = true;
+          continue;
+        }
+        const cells = parseTableCells(tl);
+        if (!headerDone) {
+          thead = document.createElement("thead");
+          const tr = document.createElement("tr");
+          for (const cell of cells) {
+            const th = document.createElement("th");
+            appendInlineMarkdown(th, cell);
+            tr.appendChild(th);
+          }
+          thead.appendChild(tr);
+          table.appendChild(thead);
+          tbody = document.createElement("tbody");
+          table.appendChild(tbody);
+          headerDone = true;
+        } else {
+          if (!tbody) {
+            tbody = document.createElement("tbody");
+            table.appendChild(tbody);
+          }
+          const tr = document.createElement("tr");
+          for (const cell of cells) {
+            const td = document.createElement("td");
+            appendInlineMarkdown(td, cell);
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        }
+      }
+
+      frag.appendChild(table);
+      continue;
+    }
+
     if (isMarkdownListLine(line)) {
       const ordered = /^\s*\d+\.\s+/.test(line);
       const list = document.createElement(ordered ? "ol" : "ul");
@@ -792,7 +854,8 @@ function renderRichTextFragment(text) {
       lines[i].trim() &&
       !isMarkdownFenceLine(lines[i]) &&
       !isMarkdownQuoteLine(lines[i]) &&
-      !isMarkdownListLine(lines[i])
+      !isMarkdownListLine(lines[i]) &&
+      !isMarkdownTableLine(lines[i])
     ) {
       paragraphLines.push(lines[i]);
       i += 1;

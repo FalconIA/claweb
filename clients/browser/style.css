@@ -464,6 +464,48 @@ button {
   word-break: break-word;
 }
 
+.msg-text table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 0.82em;
+  font-size: 0.9em;
+  overflow-x: auto;
+  display: block;
+}
+
+.msg-text table th,
+.msg-text table td {
+  border: 1px solid rgba(26, 39, 68, 0.15);
+  padding: 0.42em 0.75em;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.msg-text table th {
+  background: rgba(142, 140, 216, 0.12);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.msg-text table tr:nth-child(even) td {
+  background: rgba(142, 140, 216, 0.04);
+}
+
+.msg-user .msg-text table th {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.msg-user .msg-text table th,
+.msg-user .msg-text table td {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.msg-user .msg-text table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .msg-user .msg-text blockquote {
   border-left-color: rgba(255, 255, 255, 0.7);
   background: rgba(255, 255, 255, 0.12);

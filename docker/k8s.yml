@@ -29,16 +29,16 @@ data:
   # CLAWEB_LOGIN_1_CLIENT_ID: guest-a
 
   # Login config file content (optional if using CLAWEB_LOGIN_* env vars above)
-  claweb-login.json: |
-    {
-      "guest-a": {
-        "displayName": "Guest A",
-        "passphrases": ["change-me"],
-        "userId": "user-guest-a",
-        "roomId": "",
-        "clientId": "guest-a"
-      }
-    }
+  # claweb-login.json: |
+  #   {
+  #     "guest-a": {
+  #       "displayName": "Guest A",
+  #       "passphrases": ["change-me"],
+  #       "userId": "user-guest-a",
+  #       "roomId": "",
+  #       "clientId": "guest-a"
+  #     }
+  #   }
 
 ---
 # ── Secret: upstream auth token ──────────────────────────────────────────────

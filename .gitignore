@@ -4,6 +4,7 @@ build/
 *.log
 .DS_Store
 .history
+.playwright-mcp
 .env
 .env.*
 *.token
