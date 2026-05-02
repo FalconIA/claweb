@@ -3,7 +3,7 @@ import type { ChannelPlugin, OpenClawConfig, PluginRuntime } from "openclaw/plug
 import { buildChannelConfigSchema } from "openclaw/plugin-sdk/channel-config-schema";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/routing";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
-import { z } from "zod";
+import { z } from "openclaw/plugin-sdk/zod";
 import { buildInboundCtx } from "./inbound/build-ctx.js";
 import { createWsDeliver } from "./outbound/deliver.js";
 import { startWsServer } from "./server/ws-server.js";
@@ -114,7 +114,7 @@ export function clawebPlugin(runtime: PluginRuntime): ChannelPlugin<ClawebAccoun
           return waitUntilAbort(ctx.abortSignal);
         }
 
-        const core = ctx.channelRuntime ?? runtime.channel;
+        const core = (ctx.channelRuntime as PluginRuntime["channel"] | undefined) ?? runtime.channel;
         const ws = await startWsServer({
           host: account.listenHost,
           port: account.listenPort,
@@ -162,7 +162,7 @@ export function clawebPlugin(runtime: PluginRuntime): ChannelPlugin<ClawebAccoun
               storePath,
               sessionKey: route.sessionKey,
               ctx: inboundCtx,
-              onRecordError: (error) => {
+              onRecordError: (error: unknown) => {
                 ctx.log?.warn?.(`[claweb] recordInboundSession failed: ${String(error)}`);
               },
             });
