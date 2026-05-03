@@ -1,15 +1,10 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
-import { clawebPlugin } from "./src/channel.js";
+import { defineChannelPluginEntry } from "openclaw/plugin-sdk/channel-core";
+import { clawebPlugin, injectPluginRuntime } from "./src/channel.js";
 
-const plugin = {
+export default defineChannelPluginEntry({
   id: "claweb",
   name: "CLAWeb",
-  description: "OpenClaw Web Channel plugin (MVP-0 text loop)",
-  configSchema: emptyPluginConfigSchema(),
-  register(api: OpenClawPluginApi) {
-    api.registerChannel({ plugin: clawebPlugin(api.runtime) });
-  },
-};
-
-export default plugin;
+  description: "OpenClaw Web Channel plugin",
+  plugin: clawebPlugin,
+  setRuntime: injectPluginRuntime,
+});

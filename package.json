@@ -4,14 +4,32 @@
   "private": true,
   "type": "module",
   "description": "OpenClaw client-facing channel plugin with browser reference client and frontdoor reference host",
-  "main": "index.ts",
+  "main": "./dist/index.js",
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
   "openclaw": {
     "extensions": [
-      "./index.ts"
-    ]
+      "./dist/index.js"
+    ],
+    "channel": {
+      "id": "claweb",
+      "label": "CLAWeb",
+      "blurb": "WebSocket bridge that routes browser messages through OpenClaw."
+    },
+    "compat": {
+      "pluginApi": ">=2026.4.15"
+    },
+    "build": {
+      "openclawVersion": "2026.4.15"
+    }
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "pack:release": "pnpm pack --pack-destination releases/"
   },
   "dependencies": {
     "openclaw": "^2026.4.15",
@@ -20,6 +38,7 @@
   "devDependencies": {
     "@types/node": "^22.13.4",
     "@types/ws": "^8.5.14",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.5"
   }
 }

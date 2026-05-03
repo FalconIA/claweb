@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
-import type { ChannelPlugin, OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
+import type { ChannelPlugin, OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk/channel-core";
 import { buildChannelConfigSchema } from "openclaw/plugin-sdk/channel-config-schema";
+import { buildAccountScopedDmSecurityPolicy } from "openclaw/plugin-sdk/channel-policy";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/routing";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { z } from "openclaw/plugin-sdk/zod";
@@ -68,8 +69,13 @@ async function resolveAuthToken(account: ClawebAccount): Promise<string> {
   return "";
 }
 
-export function clawebPlugin(runtime: PluginRuntime): ChannelPlugin<ClawebAccount> {
-  return {
+let _pluginRuntime: PluginRuntime | undefined;
+
+export function injectPluginRuntime(r: PluginRuntime): void {
+  _pluginRuntime = r;
+}
+
+export const clawebPlugin: ChannelPlugin<ClawebAccount> = {
     id: CHANNEL_ID,
     meta: {
       id: CHANNEL_ID,
@@ -87,6 +93,15 @@ export function clawebPlugin(runtime: PluginRuntime): ChannelPlugin<ClawebAccoun
     },
     reload: { configPrefixes: ["channels.claweb"] },
     configSchema: buildChannelConfigSchema(z.object({}).passthrough()),
+    security: {
+      resolveDmPolicy: ({ cfg, accountId }) =>
+        buildAccountScopedDmSecurityPolicy({
+          cfg,
+          channelKey: CHANNEL_ID,
+          accountId,
+          defaultPolicy: "allow_all",
+        }),
+    },
     config: {
       listAccountIds: (cfg) => listClawebAccountIds(cfg),
       resolveAccount: (cfg, accountId) => resolveClawebAccount(cfg, accountId),
@@ -114,14 +129,18 @@ export function clawebPlugin(runtime: PluginRuntime): ChannelPlugin<ClawebAccoun
           return waitUntilAbort(ctx.abortSignal);
         }
 
-        const core = (ctx.channelRuntime as PluginRuntime["channel"] | undefined) ?? runtime.channel;
+        const core = ctx.channelRuntime as PluginRuntime["channel"] | undefined;
+        if (!core) {
+          ctx.log?.warn?.(`[claweb] channelRuntime not available, skipping account ${account.accountId}`);
+          return waitUntilAbort(ctx.abortSignal);
+        }
         const ws = await startWsServer({
           host: account.listenHost,
           port: account.listenPort,
           authToken,
-          serverVersion: runtime.version,
+          serverVersion: _pluginRuntime?.version ?? "unknown",
           onMessage: async ({ ws, userId, roomId, messageId, text, mediaUrl, mediaType, timestamp }) => {
-            const cfg = await runtime.config.loadConfig();
+            const cfg = _pluginRuntime?.config.loadConfig() ?? ctx.cfg;
             const chatType = roomId ? "group" : "direct";
             const route = core.routing.resolveAgentRoute({
               cfg,
@@ -140,7 +159,7 @@ export function clawebPlugin(runtime: PluginRuntime): ChannelPlugin<ClawebAccoun
             }
 
             const inboundCtx = await buildInboundCtx({
-              runtime,
+              runtime: _pluginRuntime!,
               channel: CHANNEL_ID,
               accountId: account.accountId,
               sessionKey: route.sessionKey,
@@ -186,5 +205,4 @@ export function clawebPlugin(runtime: PluginRuntime): ChannelPlugin<ClawebAccoun
         ctx.log?.info?.(`[claweb] ws server stopped (account=${account.accountId})`);
       },
     },
-  };
-}
+};

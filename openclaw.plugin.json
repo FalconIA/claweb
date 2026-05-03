@@ -1,9 +1,61 @@
 {
   "id": "claweb",
+  "kind": "channel",
   "channels": ["claweb"],
+  "name": "CLAWeb",
+  "description": "OpenClaw WebSocket channel plugin for browser clients",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {}
+  },
+  "channelConfigs": {
+    "claweb": {
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "listenHost": { "type": "string" },
+          "listenPort": { "type": "number" },
+          "authToken": { "type": "string" },
+          "authTokenFile": { "type": "string" },
+          "defaultAgentId": { "type": "string" },
+          "accounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "listenHost": { "type": "string" },
+                "listenPort": { "type": "number" },
+                "authToken": { "type": "string" },
+                "authTokenFile": { "type": "string" },
+                "defaultAgentId": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "uiHints": {
+        "authToken": {
+          "label": "Auth token",
+          "sensitive": true
+        },
+        "authTokenFile": {
+          "label": "Auth token file path"
+        },
+        "listenHost": {
+          "label": "Listen host"
+        },
+        "listenPort": {
+          "label": "Listen port"
+        },
+        "defaultAgentId": {
+          "label": "Default agent ID"
+        }
+      }
+    }
   }
 }
