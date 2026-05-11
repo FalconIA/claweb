@@ -8,6 +8,9 @@ releases/
 .playwright-mcp
 .env
 .env.*
+!.env.example
 *.token
 *.secret
 *.local.json
+
+/access/frontdoor/data/

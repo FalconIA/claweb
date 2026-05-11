@@ -3,8 +3,19 @@
   "version": "0.2.3-dev",
   "private": true,
   "type": "module",
-  "description": "Example CLAWeb frontdoor: serves UI, implements /login /history /ws, proxies to OpenClaw claweb channel.",
+  "description": "CLAWeb frontdoor server: static UI host, passphrase/OAuth2 auth, history persistence, and WebSocket proxy to OpenClaw upstream.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "smoke:http": "node scripts/smoke-http.js",
+    "smoke:ws": "node scripts/smoke-ws.js",
+    "smoke:browser-login": "node scripts/smoke-browser-login.js --mock",
+    "smoke:browser-login-oauth2": "node scripts/smoke-browser-login.js --mock --oauth2"
+  },
   "dependencies": {
     "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "playwright-core": "*"
   }
 }

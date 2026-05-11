@@ -12,9 +12,37 @@ import fsp from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
+import { parseOAuth2Config, validateOAuth2Config, createOAuth2Handler } from "./lib/oauth2.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Auto-load .env file if present (no external deps — plain key=value parser).
+// Search order: $CLAWEB_ENV_FILE → ./config/.env → ./.env
+// Existing process.env values are NEVER overwritten (env vars take priority).
+(function loadDotEnv() {
+  const candidates = [
+    process.env.CLAWEB_ENV_FILE,
+    path.join(__dirname, "config", ".env"),
+    path.join(__dirname, ".env"),
+  ].filter(Boolean);
+
+  for (const file of candidates) {
+    let raw;
+    try { raw = fs.readFileSync(file, "utf8"); } catch { continue; }
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq < 1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const val = trimmed.slice(eq + 1).trim().replace(/^(['"])(.*)\1$/, "$2");
+      if (key && !(key in process.env)) process.env[key] = val;
+    }
+    console.log(`[frontdoor] Loaded env from: ${file}`);
+    break; // stop at first found
+  }
+})();
 
 const ENV = process.env;
 
@@ -66,6 +94,9 @@ if (!UPSTREAM_TOKEN) {
   );
 }
 
+// --- OAuth2 config ---
+const oauth2Config = parseOAuth2Config(ENV);
+
 await fsp.mkdir(HISTORY_DIR, { recursive: true });
 await fsp.mkdir(MEDIA_DIR, { recursive: true });
 
@@ -97,6 +128,8 @@ const metrics = {
   history: { snapshotHit: 0, snapshotMiss: 0, rawFallback: 0, warmSnapshot: 0 },
   ws: { upstreamOpen: 0, upstreamClose: 0, upstreamError: 0, upstreamReady: 0, upstreamMessage: 0 },
 };
+
+validateOAuth2Config(oauth2Config, log);
 
 function json(res, status, obj) {
   const body = Buffer.from(JSON.stringify(obj));
@@ -605,6 +638,9 @@ function requireSession(req) {
   return sessionsByToken.get(token) || null;
 }
 
+const oauth2 = createOAuth2Handler(oauth2Config, { sessionsByToken, log });
+const { requireSessionWithIntrospect, introspectToken } = oauth2;
+
 // --- recent snapshot (cache) ---
 
 async function readRecentSnapshot(key) {
@@ -914,6 +950,8 @@ const server = http.createServer(async (req, res) => {
 
   // canonical routes
   if (req.method === "POST" && url.pathname === "/login") {
+    if (oauth2Config.enabled) return json(res, 404, { ok: false, error: "not_found" });
+
     const body = await readJsonBody(req);
     const passphrase = String(body?.passphrase || "").trim();
     if (!passphrase) return json(res, 400, { ok: false, error: "missing_passphrase" });
@@ -940,8 +978,13 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, session });
   }
 
+  if (req.method === "POST" && url.pathname === "/oauth2/login") {
+    if (!oauth2Config.enabled) return json(res, 404, { ok: false, error: "not_found" });
+    return oauth2.handleOAuth2Login(req, res, { json, readJsonBody });
+  }
+
   if (req.method === "GET" && url.pathname === "/history") {
-    const session = requireSession(req);
+    const session = await requireSessionWithIntrospect(req);
     if (!session) return json(res, 401, { ok: false, error: "unauthorized" });
 
     const userId = String(url.searchParams.get("userId") || session.userId || "");
@@ -963,7 +1006,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/threads") {
-    const session = requireSession(req);
+    const session = await requireSessionWithIntrospect(req);
     if (!session) return json(res, 401, { ok: false, error: "unauthorized" });
 
     let cfg;
@@ -986,14 +1029,24 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/config") {
     // Public, non-sensitive UI config.
+    const loginFields = oauth2Config.enabled
+      ? [
+          { id: "login-username", type: "text",     name: "username",   label: "用户名", autocomplete: "username",         placeholder: "输入用户名" },
+          { id: "login-password", type: "password", name: "password",   label: "密码",   autocomplete: "current-password", placeholder: "输入密码"   },
+        ]
+      : [
+          { id: "passphrase-input", type: "password", name: "passphrase", label: "口令", autocomplete: "current-password", placeholder: "输入口令" },
+        ];
     return json(res, 200, {
       ok: true,
+      loginFields,
+      loginEndpoint: oauth2Config.enabled ? "/oauth2/login" : "/login",
       assistantName: String(ENV.CLAWEB_ASSISTANT_NAME || "").trim() || null,
     });
   }
 
   if (req.method === "POST" && url.pathname === "/upload") {
-    const session = requireSession(req);
+    const session = await requireSessionWithIntrospect(req);
     if (!session) return json(res, 401, { ok: false, error: "unauthorized" });
 
     const payload = await readJsonBody(req);
@@ -1011,7 +1064,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/upload-file") {
-    const session = requireSession(req);
+    const session = await requireSessionWithIntrospect(req);
     if (!session) return json(res, 401, { ok: false, error: "unauthorized" });
 
     try {
@@ -1434,6 +1487,22 @@ wss.on("connection", (clientWs, req) => {
         sendClient({ type: "error", message: "auth failed" });
         clientWs.close(1008, "unauthorized");
         return;
+      }
+
+      // OAuth2 introspection check on WS connect
+      if (oauth2Config.introspectUrl && session._accessToken) {
+        const now = Date.now();
+        if (now >= (session._introspectValidUntil || 0)) {
+          const active = await introspectToken(session._accessToken);
+          if (!active) {
+            sessionsByToken.delete(token);
+            log("warn", "ws_oauth2_token_revoked", { remote });
+            sendClient({ type: "error", message: "auth failed" });
+            clientWs.close(1008, "unauthorized");
+            return;
+          }
+          session._introspectValidUntil = now + oauth2Config.introspectTtlMs;
+        }
       }
 
       state.authed = true;

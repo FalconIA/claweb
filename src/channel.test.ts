@@ -96,7 +96,7 @@ describe("clawebPlugin config.resolveAccount", () => {
 describe("clawebPlugin config.isConfigured", () => {
   it("returns true when authToken present", () => {
     const account = clawebPlugin.config!.resolveAccount!(makeCfg() as any, undefined);
-    expect(clawebPlugin.config!.isConfigured!(account)).toBe(true);
+    expect(clawebPlugin.config!.isConfigured!(account, undefined as any)).toBe(true);
   });
 
   it("returns true when authTokenFile present", () => {
@@ -104,7 +104,7 @@ describe("clawebPlugin config.isConfigured", () => {
       makeCfg({ authToken: undefined, authTokenFile: "/run/secrets/token" }) as any,
       undefined,
     );
-    expect(clawebPlugin.config!.isConfigured!(account)).toBe(true);
+    expect(clawebPlugin.config!.isConfigured!(account, undefined as any)).toBe(true);
   });
 
   it("returns false when neither token field is set", () => {
@@ -112,7 +112,7 @@ describe("clawebPlugin config.isConfigured", () => {
       makeCfg({ authToken: undefined }) as any,
       undefined,
     );
-    expect(clawebPlugin.config!.isConfigured!(account)).toBe(false);
+    expect(clawebPlugin.config!.isConfigured!(account, undefined as any)).toBe(false);
   });
 });
 
@@ -123,13 +123,13 @@ describe("clawebPlugin config.isConfigured", () => {
 describe("clawebPlugin config.describeAccount", () => {
   it("reports correct baseUrl", () => {
     const account = clawebPlugin.config!.resolveAccount!(makeCfg() as any, undefined);
-    const desc = clawebPlugin.config!.describeAccount!(account);
+    const desc = clawebPlugin.config!.describeAccount!(account, undefined as any);
     expect(desc.baseUrl).toBe("ws://127.0.0.1:18999");
   });
 
   it("reports configured=true when token present", () => {
     const account = clawebPlugin.config!.resolveAccount!(makeCfg() as any, undefined);
-    const desc = clawebPlugin.config!.describeAccount!(account);
+    const desc = clawebPlugin.config!.describeAccount!(account, undefined as any);
     expect(desc.configured).toBe(true);
   });
 
@@ -138,13 +138,13 @@ describe("clawebPlugin config.describeAccount", () => {
       makeCfg({ authToken: undefined }) as any,
       undefined,
     );
-    const desc = clawebPlugin.config!.describeAccount!(account);
+    const desc = clawebPlugin.config!.describeAccount!(account, undefined as any);
     expect(desc.configured).toBe(false);
   });
 
   it("does not expose token value in description", () => {
     const account = clawebPlugin.config!.resolveAccount!(makeCfg() as any, undefined);
-    const desc = clawebPlugin.config!.describeAccount!(account);
+    const desc = clawebPlugin.config!.describeAccount!(account, undefined as any);
     expect(desc).not.toHaveProperty("authToken");
     expect(desc).not.toHaveProperty("token");
   });

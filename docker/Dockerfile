@@ -4,8 +4,9 @@
 # ── stage 1: deps ────────────────────────────────────────────────────────────
 FROM node:22-alpine AS deps
 WORKDIR /build
-COPY access/frontdoor/package.json ./
-RUN npm install --omit=dev --ignore-scripts
+COPY access/frontdoor/package.json access/frontdoor/pnpm-lock.yaml ./
+RUN corepack enable pnpm \
+  && pnpm install --prod --frozen-lockfile --ignore-scripts
 
 # ── stage 2: runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime

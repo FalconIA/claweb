@@ -65,6 +65,8 @@ const state = {
   switchTarget: null,
   messageIndex: new Map(), // messageId -> { text, node }
   assistantName: null,
+  loginFields: null,
+  loginEndpoint: "/login",
   uiBranding: { ...DEFAULT_UI },
   composingReplyTo: null,
   pendingImage: null, // { file, dataUrl, filename, mime, compressedDataUrl?, compressedMime?, stats?, compressionPromise?, compressing? }
@@ -77,7 +79,6 @@ const state = {
 const el = {
   loginPanel: document.getElementById("login-panel"),
   chatPanel: document.getElementById("chat-panel"),
-  passphrase: document.getElementById("passphrase-input"),
   loginBtn: document.getElementById("login-btn"),
   loginError: document.getElementById("login-error"),
   sessionDesc: document.getElementById("session-desc"),
@@ -137,6 +138,8 @@ const el = {
   fileName: document.getElementById("file-name"),
   fileHint: document.getElementById("file-hint"),
   fileCancel: document.getElementById("file-cancel"),
+
+  loginFieldsContainer: document.getElementById("login-fields-container"),
 
   pickMenu: document.getElementById("pick-menu"),
   pickMedia: document.getElementById("pick-media"),
@@ -996,20 +999,49 @@ function showChatPanel(session) {
   el.input.focus();
 }
 
+function renderLoginFields(fields) {
+  if (!el.loginFieldsContainer || !Array.isArray(fields)) return;
+  el.loginFieldsContainer.innerHTML = fields
+    .map(
+      (f) =>
+        `<div class="row"><label for="${f.id}">${f.label}</label>` +
+        `<input id="${f.id}" type="${f.type}" autocomplete="${f.autocomplete ?? ""}" placeholder="${f.placeholder ?? ""}" /></div>`
+    )
+    .join("");
+  // Re-bind keydown: Enter on each field moves to next, or submits on the last
+  const inputs = [...el.loginFieldsContainer.querySelectorAll("input")];
+  inputs.forEach((input, i) => {
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      if (i < inputs.length - 1) inputs[i + 1].focus();
+      else login();
+    });
+  });
+  inputs[0]?.focus();
+}
+
 function showLoginPanel() {
   el.chatPanel.classList.add("hidden");
   el.loginPanel.classList.remove("hidden");
-  el.passphrase.value = "";
   setLoginError("");
-  el.passphrase.focus();
+  if (state.loginFields) {
+    renderLoginFields(state.loginFields);
+  } else {
+    el.loginFieldsContainer?.querySelector("input")?.focus();
+  }
 }
 
 function mapLoginError(errorCode) {
-  if (errorCode === "invalid_credentials") return "Invalid passphrase.";
+  if (errorCode === "invalid_credentials") return "Invalid credentials.";
+  if (errorCode === "missing_credentials") return "请输入所有必填项。";
   if (errorCode === "missing_passphrase") return "Passphrase is required.";
   if (errorCode === "ambiguous_passphrase") return "Passphrase mapping conflict on server.";
   if (errorCode === "too_many_attempts") return "Too many attempts. Try again later.";
   if (errorCode === "login_not_configured") return "Server login mapping is not configured.";
+  if (errorCode === "provider_unreachable") return "认证服务暂时无法访问，请稍后重试。";
+  if (errorCode === "provider_userinfo_missing") return "认证服务返回数据异常，请联系管理员。";
+  if (errorCode === "provider_identity_missing") return "认证服务未返回用户信息，请联系管理员。";
   return "Login failed. Please try again.";
 }
 
@@ -1304,6 +1336,12 @@ async function loadUiConfig() {
     const { resp, data } = await fetchJsonWithFallback("/config", "/claweb/config", { method: "GET" });
     if (resp.ok && data?.ok) {
       state.assistantName = data.assistantName ? String(data.assistantName) : null;
+      if (Array.isArray(data.loginFields) && data.loginFields.length > 0) {
+        state.loginFields = data.loginFields;
+      }
+      if (data.loginEndpoint) {
+        state.loginEndpoint = String(data.loginEndpoint);
+      }
     }
   } catch {
     // ignore
@@ -1311,20 +1349,31 @@ async function loadUiConfig() {
 }
 
 async function login() {
-  const passphrase = el.passphrase.value.trim();
-  if (!passphrase) {
-    setLoginError("Passphrase is required.");
-    return;
-  }
-
   setLoginError("");
   el.loginBtn.disabled = true;
 
+  // Collect values from all rendered login fields
+  const fields = state.loginFields ?? [];
+  const bodyObj = {};
+  for (const f of fields) {
+    const val = (document.getElementById(f.id)?.value ?? "").trim();
+    if (!val) {
+      setLoginError(mapLoginError("missing_credentials"));
+      el.loginBtn.disabled = false;
+      return;
+    }
+    bodyObj[f.name] = val;
+  }
+
+  const ep = state.loginEndpoint;
+  const endpoint = { primary: ep, fallback: `/claweb${ep}` };
+  const body = JSON.stringify(bodyObj);
+
   try {
-    const { resp, data } = await fetchJsonWithFallback("/login", "/claweb/login", {
+    const { resp, data } = await fetchJsonWithFallback(endpoint.primary, endpoint.fallback, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ passphrase }),
+      body,
     });
 
     if (!resp.ok || !data?.ok || !data?.session) {
@@ -1452,6 +1501,11 @@ function connect(opts = {}) {
       }
       if (reason.toLowerCase().includes("auth") || reason.toLowerCase().includes("token")) {
         setStatus("鉴权失败", "status-offline");
+        state.manualDisconnect = true; // prevent reconnect loop
+        state.session = null;
+        ws.close();
+        showLoginPanel();
+        setLoginError("会话已过期，请重新登录");
       }
       return;
     }
@@ -2168,11 +2222,7 @@ function renderThreadsList(threads) {
       state.switchTarget = t.identity || null;
       hideThreadsModal();
       logout();
-      if (el.passphrase) {
-        el.passphrase.value = "";
-        el.passphrase.focus();
-      }
-      setLoginError(`Switching to ${t.displayName || t.identity}. Please enter passphrase.`);
+      setLoginError(`Switching to ${t.displayName || t.identity}. Please login again.`);
     });
 
     item.appendChild(meta);
@@ -2189,6 +2239,11 @@ async function bootstrapApp() {
 
   const restored = loadStoredSession();
   if (!restored) {
+    try {
+      await loadUiConfig();
+    } catch {
+      // ignore
+    }
     showLoginPanel();
     return;
   }
@@ -2212,12 +2267,6 @@ async function bootstrapApp() {
 bootstrapApp();
 
 el.loginBtn.addEventListener("click", login);
-el.passphrase.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    login();
-  }
-});
 function autoResizeInput() {
   if (!el.input) return;
   el.input.style.height = "auto";
