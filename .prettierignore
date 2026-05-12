@@ -1,0 +1,7 @@
+access/
+docker/
+examples/
+dist/
+releases/
+pnpm-lock.yaml
+**/*.md

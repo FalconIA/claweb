@@ -32,8 +32,7 @@ type ClawebConfigRoot = {
 const CHANNEL_ID = "claweb";
 
 function readClawebConfigRoot(cfg: OpenClawConfig): ClawebConfigRoot {
-  return ((cfg as Record<string, unknown>).channels as Record<string, unknown> | undefined)
-    ?.claweb as ClawebConfigRoot;
+  return ((cfg as Record<string, unknown>).channels as Record<string, unknown> | undefined)?.claweb as ClawebConfigRoot;
 }
 
 function listClawebAccountIds(cfg: OpenClawConfig): string[] {
@@ -76,133 +75,133 @@ export function injectPluginRuntime(r: PluginRuntime): void {
 }
 
 export const clawebPlugin: ChannelPlugin<ClawebAccount> = {
+  id: CHANNEL_ID,
+  meta: {
     id: CHANNEL_ID,
-    meta: {
-      id: CHANNEL_ID,
-      label: "CLAWeb",
-      selectionLabel: "CLAWeb (WebSocket)",
-      docsPath: "/channels/claweb",
-      docsLabel: "claweb",
-      blurb: "WebSocket bridge that routes browser text messages through OpenClaw channel pipeline.",
-      order: 200,
-      aliases: ["web", "ws"],
-    },
-    capabilities: {
-      chatTypes: ["direct", "group"],
-      blockStreaming: true,
-    },
-    reload: { configPrefixes: ["channels.claweb"] },
-    configSchema: buildChannelConfigSchema(z.object({}).passthrough()),
-    security: {
-      resolveDmPolicy: ({ cfg, accountId }) =>
-        buildAccountScopedDmSecurityPolicy({
-          cfg,
-          channelKey: CHANNEL_ID,
-          accountId,
-          defaultPolicy: "allow_all",
-        }),
-    },
-    config: {
-      listAccountIds: (cfg) => listClawebAccountIds(cfg),
-      resolveAccount: (cfg, accountId) => resolveClawebAccount(cfg, accountId),
-      defaultAccountId: () => DEFAULT_ACCOUNT_ID,
-      isConfigured: (account) => Boolean(account.authToken?.trim() || account.authTokenFile?.trim()),
-      describeAccount: (account) => ({
-        accountId: account.accountId,
-        enabled: account.enabled,
-        configured: Boolean(account.authToken?.trim() || account.authTokenFile?.trim()),
-        baseUrl: `ws://${account.listenHost}:${account.listenPort}`,
+    label: "CLAWeb",
+    selectionLabel: "CLAWeb (WebSocket)",
+    docsPath: "/channels/claweb",
+    docsLabel: "claweb",
+    blurb: "WebSocket bridge that routes browser text messages through OpenClaw channel pipeline.",
+    order: 200,
+    aliases: ["web", "ws"],
+  },
+  capabilities: {
+    chatTypes: ["direct", "group"],
+    blockStreaming: true,
+  },
+  reload: { configPrefixes: ["channels.claweb"] },
+  configSchema: buildChannelConfigSchema(z.object({}).passthrough()),
+  security: {
+    resolveDmPolicy: ({ cfg, accountId }) =>
+      buildAccountScopedDmSecurityPolicy({
+        cfg,
+        channelKey: CHANNEL_ID,
+        accountId,
+        defaultPolicy: "allow_all",
       }),
-    },
-    gateway: {
-      startAccount: async (ctx) => {
-        const account = resolveClawebAccount(ctx.cfg, ctx.accountId);
+  },
+  config: {
+    listAccountIds: (cfg) => listClawebAccountIds(cfg),
+    resolveAccount: (cfg, accountId) => resolveClawebAccount(cfg, accountId),
+    defaultAccountId: () => DEFAULT_ACCOUNT_ID,
+    isConfigured: (account) => Boolean(account.authToken?.trim() || account.authTokenFile?.trim()),
+    describeAccount: (account) => ({
+      accountId: account.accountId,
+      enabled: account.enabled,
+      configured: Boolean(account.authToken?.trim() || account.authTokenFile?.trim()),
+      baseUrl: `ws://${account.listenHost}:${account.listenPort}`,
+    }),
+  },
+  gateway: {
+    startAccount: async (ctx) => {
+      const account = resolveClawebAccount(ctx.cfg, ctx.accountId);
 
-        if (!account.enabled) {
-          ctx.log?.info?.(`[claweb] account ${account.accountId} disabled, skip startup`);
-          return waitUntilAbort(ctx.abortSignal);
-        }
+      if (!account.enabled) {
+        ctx.log?.info?.(`[claweb] account ${account.accountId} disabled, skip startup`);
+        return waitUntilAbort(ctx.abortSignal);
+      }
 
-        const authToken = await resolveAuthToken(account);
-        if (!authToken) {
-          ctx.log?.warn?.(`[claweb] account ${account.accountId} missing authToken/authTokenFile`);
-          return waitUntilAbort(ctx.abortSignal);
-        }
+      const authToken = await resolveAuthToken(account);
+      if (!authToken) {
+        ctx.log?.warn?.(`[claweb] account ${account.accountId} missing authToken/authTokenFile`);
+        return waitUntilAbort(ctx.abortSignal);
+      }
 
-        const core = ctx.channelRuntime as PluginRuntime["channel"] | undefined;
-        if (!core) {
-          ctx.log?.warn?.(`[claweb] channelRuntime not available, skipping account ${account.accountId}`);
-          return waitUntilAbort(ctx.abortSignal);
-        }
-        const ws = await startWsServer({
-          host: account.listenHost,
-          port: account.listenPort,
-          authToken,
-          serverVersion: _pluginRuntime?.version ?? "unknown",
-          onMessage: async ({ ws, userId, roomId, messageId, text, mediaUrl, mediaType, timestamp }) => {
-            const cfg = _pluginRuntime?.config.loadConfig() ?? ctx.cfg;
-            const chatType = roomId ? "group" : "direct";
-            const route = core.routing.resolveAgentRoute({
-              cfg,
-              channel: CHANNEL_ID,
-              accountId: account.accountId,
-              peer: {
-                kind: chatType,
-                id: roomId ?? userId,
-              },
-            });
+      const core = ctx.channelRuntime as PluginRuntime["channel"] | undefined;
+      if (!core) {
+        ctx.log?.warn?.(`[claweb] channelRuntime not available, skipping account ${account.accountId}`);
+        return waitUntilAbort(ctx.abortSignal);
+      }
+      const ws = await startWsServer({
+        host: account.listenHost,
+        port: account.listenPort,
+        authToken,
+        serverVersion: _pluginRuntime?.version ?? "unknown",
+        onMessage: async ({ ws, userId, roomId, messageId, text, mediaUrl, mediaType, timestamp }) => {
+          const cfg = _pluginRuntime?.config.loadConfig() ?? ctx.cfg;
+          const chatType = roomId ? "group" : "direct";
+          const route = core.routing.resolveAgentRoute({
+            cfg,
+            channel: CHANNEL_ID,
+            accountId: account.accountId,
+            peer: {
+              kind: chatType,
+              id: roomId ?? userId,
+            },
+          });
 
-            if (mediaUrl) {
-              ctx.log?.info?.(
-                `[claweb] inbound media: type=${String(mediaType || "unknown")} url=${String(mediaUrl).slice(0, 120)}`,
-              );
-            }
-
-            const inboundCtx = await buildInboundCtx({
-              runtime: _pluginRuntime!,
-              channel: CHANNEL_ID,
-              accountId: account.accountId,
-              sessionKey: route.sessionKey,
-              userId,
-              roomId,
-              text,
-              mediaUrl,
-              mediaType,
-              messageId,
-              timestamp,
-            });
-
-            const storePath = core.session.resolveStorePath(
-              (cfg.session as Record<string, unknown> | undefined)?.store as string | undefined,
-              { agentId: route.agentId },
+          if (mediaUrl) {
+            ctx.log?.info?.(
+              `[claweb] inbound media: type=${String(mediaType || "unknown")} url=${String(mediaUrl).slice(0, 120)}`
             );
+          }
 
-            await core.session.recordInboundSession({
-              storePath,
-              sessionKey: route.sessionKey,
-              ctx: inboundCtx,
-              onRecordError: (error: unknown) => {
-                ctx.log?.warn?.(`[claweb] recordInboundSession failed: ${String(error)}`);
-              },
-            });
+          const inboundCtx = await buildInboundCtx({
+            runtime: _pluginRuntime!,
+            channel: CHANNEL_ID,
+            accountId: account.accountId,
+            sessionKey: route.sessionKey,
+            userId,
+            roomId,
+            text,
+            mediaUrl,
+            mediaType,
+            messageId,
+            timestamp,
+          });
 
-            await core.reply.dispatchReplyWithBufferedBlockDispatcher({
-              ctx: inboundCtx,
-              cfg,
-              dispatcherOptions: {
-                deliver: createWsDeliver(ws, messageId),
-              },
-            });
-          },
-        });
+          const storePath = core.session.resolveStorePath(
+            (cfg.session as Record<string, unknown> | undefined)?.store as string | undefined,
+            { agentId: route.agentId }
+          );
 
-        ctx.log?.info?.(
-          `[claweb] ws server started on ws://${account.listenHost}:${account.listenPort} (account=${account.accountId})`,
-        );
+          await core.session.recordInboundSession({
+            storePath,
+            sessionKey: route.sessionKey,
+            ctx: inboundCtx,
+            onRecordError: (error: unknown) => {
+              ctx.log?.warn?.(`[claweb] recordInboundSession failed: ${String(error)}`);
+            },
+          });
 
-        await waitUntilAbort(ctx.abortSignal);
-        await ws.close();
-        ctx.log?.info?.(`[claweb] ws server stopped (account=${account.accountId})`);
-      },
+          await core.reply.dispatchReplyWithBufferedBlockDispatcher({
+            ctx: inboundCtx,
+            cfg,
+            dispatcherOptions: {
+              deliver: createWsDeliver(ws, messageId),
+            },
+          });
+        },
+      });
+
+      ctx.log?.info?.(
+        `[claweb] ws server started on ws://${account.listenHost}:${account.listenPort} (account=${account.accountId})`
+      );
+
+      await waitUntilAbort(ctx.abortSignal);
+      await ws.close();
+      ctx.log?.info?.(`[claweb] ws server stopped (account=${account.accountId})`);
     },
+  },
 };

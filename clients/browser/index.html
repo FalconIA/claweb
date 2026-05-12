@@ -1,187 +1,190 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CLAWeb Entry</title>
-  <link rel="stylesheet" href="/claweb/style.css?v=20260317-githubclean1" />
-</head>
-<body>
-  <main class="app">
-    <section id="login-panel" class="panel gate-panel">
-      <header class="gate-header">
-        <div id="gate-avatar" class="gate-avatar">🌌</div>
-        <h1 id="app-title">CLAWeb Demo</h1>
-        <p class="subtitle">欢迎回来</p>
-      </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CLAWeb Entry</title>
+    <link rel="stylesheet" href="/claweb/style.css?v=20260317-githubclean1" />
+  </head>
+  <body>
+    <main class="app">
+      <section id="login-panel" class="panel gate-panel">
+        <header class="gate-header">
+          <div id="gate-avatar" class="gate-avatar">🌌</div>
+          <h1 id="app-title">CLAWeb Demo</h1>
+          <p class="subtitle">欢迎回来</p>
+        </header>
 
-      <div id="login-fields-container">
-        <div class="login-loading">
-          <span></span><span></span><span></span>
+        <div id="login-fields-container">
+          <div class="login-loading"><span></span><span></span><span></span></div>
         </div>
-      </div>
 
-      <div class="actions single">
-        <button id="login-btn" type="button">进入聊天</button>
-      </div>
+        <div class="actions single">
+          <button id="login-btn" type="button">进入聊天</button>
+        </div>
 
-      <p id="login-error" class="error" role="status" aria-live="polite"></p>
-    </section>
+        <p id="login-error" class="error" role="status" aria-live="polite"></p>
+      </section>
 
-    <section id="chat-panel" class="chat-shell hidden">
-      <header class="chat-header">
-        <div class="chat-brand">
-          <div id="brand-avatar" class="brand-avatar">🌌</div>
-          <div class="brand-copy">
-            <h2 id="brand-title">CLAWeb Demo</h2>
-            <div class="brand-status-row">
-              <span id="conn-status-dot" class="status-dot status-offline"></span>
-              <span id="conn-status-text" class="brand-status-text">离线</span>
+      <section id="chat-panel" class="chat-shell hidden">
+        <header class="chat-header">
+          <div class="chat-brand">
+            <div id="brand-avatar" class="brand-avatar">🌌</div>
+            <div class="brand-copy">
+              <h2 id="brand-title">CLAWeb Demo</h2>
+              <div class="brand-status-row">
+                <span id="conn-status-dot" class="status-dot status-offline"></span>
+                <span id="conn-status-text" class="brand-status-text">离线</span>
+              </div>
+              <p id="session-desc" class="subtitle hidden"></p>
             </div>
-            <p id="session-desc" class="subtitle hidden"></p>
           </div>
-        </div>
 
-        <div class="header-actions">
-          <button id="search-toggle" type="button" class="icon-btn" aria-label="搜索">🔍</button>
-          <button id="more-btn" type="button" class="icon-btn" aria-label="更多">⋯</button>
-        </div>
-      </header>
-
-      <section id="messages" class="messages" aria-live="polite"></section>
-
-      <footer class="composer-card">
-        <div id="reply-banner" class="reply-banner hidden" aria-live="polite">
-          <div class="reply-banner-text" id="reply-banner-text"></div>
-          <button id="reply-cancel" type="button" class="mini-btn" aria-label="取消回复">✕</button>
-        </div>
-
-        <div id="image-banner" class="image-banner hidden" aria-live="polite">
-          <img id="image-preview" class="image-preview" alt="selected image" />
-          <div class="image-banner-meta">
-            <div id="image-name" class="image-name">已选图片</div>
-            <div id="image-hint" class="image-hint">选择或粘贴图片后发送</div>
+          <div class="header-actions">
+            <button id="search-toggle" type="button" class="icon-btn" aria-label="搜索">🔍</button>
+            <button id="more-btn" type="button" class="icon-btn" aria-label="更多">⋯</button>
           </div>
-          <button id="image-cancel" type="button" class="mini-btn" aria-label="移除图片">✕</button>
-        </div>
+        </header>
 
-        <div id="file-banner" class="image-banner hidden" aria-live="polite">
-          <div class="file-preview">📎</div>
-          <div class="image-banner-meta">
-            <div id="file-name" class="image-name">已选文件</div>
-            <div id="file-hint" class="image-hint">选择文件后发送（最大 25MB）</div>
+        <section id="messages" class="messages" aria-live="polite"></section>
+
+        <footer class="composer-card">
+          <div id="reply-banner" class="reply-banner hidden" aria-live="polite">
+            <div class="reply-banner-text" id="reply-banner-text"></div>
+            <button id="reply-cancel" type="button" class="mini-btn" aria-label="取消回复">✕</button>
           </div>
-          <button id="file-cancel" type="button" class="mini-btn" aria-label="移除文件">✕</button>
-        </div>
 
-        <div class="composer-row">
-          <button id="image-btn" type="button" class="icon-btn soft" aria-label="添加">＋</button>
-          <input id="image-input" type="file" accept="image/*" class="hidden" />
-          <input id="file-input" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt" class="hidden" />
-          <textarea id="message-input" rows="1" placeholder="说点什么…"></textarea>
-          <button id="send-btn" type="button" class="send-btn" aria-label="发送">➤</button>
-        </div>
-      </footer>
-
-      <div id="msg-menu" class="msg-menu hidden" role="menu" aria-hidden="true">
-        <button id="msg-menu-reply" type="button" class="ghost" role="menuitem">回复</button>
-        <button id="msg-menu-copy" type="button" class="ghost" role="menuitem">复制</button>
-      </div>
-
-      <div id="more-menu" class="floating-menu hidden" role="menu" aria-hidden="true">
-        <button id="appearance-action" type="button" class="ghost" role="menuitem">外观设置</button>
-        <button id="threads-action" type="button" class="ghost" role="menuitem">切换会话</button>
-        <button id="disconnect-btn" type="button" class="ghost" role="menuitem">断开连接</button>
-        <button id="logout-btn" type="button" class="ghost" role="menuitem">退出登录</button>
-      </div>
-
-      <div id="pick-menu" class="floating-menu hidden" role="menu" aria-hidden="true">
-        <button id="pick-media" type="button" class="ghost" role="menuitem">媒体</button>
-        <button id="pick-file" type="button" class="ghost" role="menuitem">文件</button>
-      </div>
-
-      <section id="search-modal" class="modal hidden" aria-hidden="true">
-        <div class="modal-card search-modal-card" role="dialog" aria-modal="true" aria-label="搜索消息">
-          <header class="modal-header compact">
-            <h3>搜索消息</h3>
-            <button id="search-close" type="button" class="mini-btn" aria-label="关闭搜索">✕</button>
-          </header>
-          <div class="search-bar">
-            <input id="search-input" class="search" type="search" placeholder="搜索消息内容" autocomplete="off" />
-            <button id="search-clear" type="button" class="ghost">清空</button>
+          <div id="image-banner" class="image-banner hidden" aria-live="polite">
+            <img id="image-preview" class="image-preview" alt="selected image" />
+            <div class="image-banner-meta">
+              <div id="image-name" class="image-name">已选图片</div>
+              <div id="image-hint" class="image-hint">选择或粘贴图片后发送</div>
+            </div>
+            <button id="image-cancel" type="button" class="mini-btn" aria-label="移除图片">✕</button>
           </div>
-          <section id="search-results" class="search-results hidden" aria-live="polite"></section>
-        </div>
-      </section>
 
-      <section id="threads-modal" class="modal hidden" aria-hidden="true">
-        <div class="modal-card" role="dialog" aria-modal="true" aria-label="切换会话">
-          <header class="modal-header compact">
-            <h3>切换会话</h3>
-            <button id="threads-close" type="button" class="mini-btn" aria-label="关闭">✕</button>
-          </header>
-          <div id="threads-list" class="threads-list"></div>
-        </div>
-      </section>
+          <div id="file-banner" class="image-banner hidden" aria-live="polite">
+            <div class="file-preview">📎</div>
+            <div class="image-banner-meta">
+              <div id="file-name" class="image-name">已选文件</div>
+              <div id="file-hint" class="image-hint">选择文件后发送（最大 25MB）</div>
+            </div>
+            <button id="file-cancel" type="button" class="mini-btn" aria-label="移除文件">✕</button>
+          </div>
 
-      <section id="appearance-modal" class="modal hidden" aria-hidden="true">
-        <div class="modal-card appearance-modal-card" role="dialog" aria-modal="true" aria-label="外观设置">
-          <header class="modal-header compact">
-            <h3>外观设置</h3>
-            <button id="appearance-close" type="button" class="mini-btn" aria-label="关闭">✕</button>
-          </header>
-          <div class="settings-grid">
-            <label class="row">
-              <span>空间名（登录页）</span>
-              <input id="appearance-title" type="text" placeholder="比如：CLAWeb Demo" />
-            </label>
-            <label class="row">
-              <span>角色名（聊天页）</span>
-              <input id="appearance-character" type="text" placeholder="比如：CLAWeb" />
-            </label>
-            <label class="row">
-              <span>头像模式</span>
-              <select id="appearance-avatar-mode">
-                <option value="emoji">Emoji</option>
-                <option value="image">图片链接</option>
-              </select>
-            </label>
-            <label class="row">
-              <span>头像内容</span>
-              <input id="appearance-avatar" type="text" placeholder="🌌 或 https://..." />
-            </label>
-            <div class="row">
-              <span>上传头像图片</span>
-              <div class="appearance-upload-row">
-                <button id="appearance-avatar-pick" type="button" class="ghost">选择图片</button>
-                <input id="appearance-avatar-file" type="file" accept="image/*" class="hidden" />
+          <div class="composer-row">
+            <button id="image-btn" type="button" class="icon-btn soft" aria-label="添加">＋</button>
+            <input id="image-input" type="file" accept="image/*" class="hidden" />
+            <input
+              id="file-input"
+              type="file"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt"
+              class="hidden"
+            />
+            <textarea id="message-input" rows="1" placeholder="说点什么…"></textarea>
+            <button id="send-btn" type="button" class="send-btn" aria-label="发送">➤</button>
+          </div>
+        </footer>
+
+        <div id="msg-menu" class="msg-menu hidden" role="menu" aria-hidden="true">
+          <button id="msg-menu-reply" type="button" class="ghost" role="menuitem">回复</button>
+          <button id="msg-menu-copy" type="button" class="ghost" role="menuitem">复制</button>
+        </div>
+
+        <div id="more-menu" class="floating-menu hidden" role="menu" aria-hidden="true">
+          <button id="appearance-action" type="button" class="ghost" role="menuitem">外观设置</button>
+          <button id="threads-action" type="button" class="ghost" role="menuitem">切换会话</button>
+          <button id="disconnect-btn" type="button" class="ghost" role="menuitem">断开连接</button>
+          <button id="logout-btn" type="button" class="ghost" role="menuitem">退出登录</button>
+        </div>
+
+        <div id="pick-menu" class="floating-menu hidden" role="menu" aria-hidden="true">
+          <button id="pick-media" type="button" class="ghost" role="menuitem">媒体</button>
+          <button id="pick-file" type="button" class="ghost" role="menuitem">文件</button>
+        </div>
+
+        <section id="search-modal" class="modal hidden" aria-hidden="true">
+          <div class="modal-card search-modal-card" role="dialog" aria-modal="true" aria-label="搜索消息">
+            <header class="modal-header compact">
+              <h3>搜索消息</h3>
+              <button id="search-close" type="button" class="mini-btn" aria-label="关闭搜索">✕</button>
+            </header>
+            <div class="search-bar">
+              <input id="search-input" class="search" type="search" placeholder="搜索消息内容" autocomplete="off" />
+              <button id="search-clear" type="button" class="ghost">清空</button>
+            </div>
+            <section id="search-results" class="search-results hidden" aria-live="polite"></section>
+          </div>
+        </section>
+
+        <section id="threads-modal" class="modal hidden" aria-hidden="true">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-label="切换会话">
+            <header class="modal-header compact">
+              <h3>切换会话</h3>
+              <button id="threads-close" type="button" class="mini-btn" aria-label="关闭">✕</button>
+            </header>
+            <div id="threads-list" class="threads-list"></div>
+          </div>
+        </section>
+
+        <section id="appearance-modal" class="modal hidden" aria-hidden="true">
+          <div class="modal-card appearance-modal-card" role="dialog" aria-modal="true" aria-label="外观设置">
+            <header class="modal-header compact">
+              <h3>外观设置</h3>
+              <button id="appearance-close" type="button" class="mini-btn" aria-label="关闭">✕</button>
+            </header>
+            <div class="settings-grid">
+              <label class="row">
+                <span>空间名（登录页）</span>
+                <input id="appearance-title" type="text" placeholder="比如：CLAWeb Demo" />
+              </label>
+              <label class="row">
+                <span>角色名（聊天页）</span>
+                <input id="appearance-character" type="text" placeholder="比如：CLAWeb" />
+              </label>
+              <label class="row">
+                <span>头像模式</span>
+                <select id="appearance-avatar-mode">
+                  <option value="emoji">Emoji</option>
+                  <option value="image">图片链接</option>
+                </select>
+              </label>
+              <label class="row">
+                <span>头像内容</span>
+                <input id="appearance-avatar" type="text" placeholder="🌌 或 https://..." />
+              </label>
+              <div class="row">
+                <span>上传头像图片</span>
+                <div class="appearance-upload-row">
+                  <button id="appearance-avatar-pick" type="button" class="ghost">选择图片</button>
+                  <input id="appearance-avatar-file" type="file" accept="image/*" class="hidden" />
+                </div>
               </div>
             </div>
-          </div>
-          <div class="appearance-preview">
-            <div id="appearance-preview-avatar" class="brand-avatar">🌌</div>
-            <div class="appearance-preview-copy">
-              <div id="appearance-preview-title" class="appearance-preview-title">CLAWeb Demo</div>
-              <div id="appearance-preview-character" class="appearance-preview-character">CLAWeb</div>
+            <div class="appearance-preview">
+              <div id="appearance-preview-avatar" class="brand-avatar">🌌</div>
+              <div class="appearance-preview-copy">
+                <div id="appearance-preview-title" class="appearance-preview-title">CLAWeb Demo</div>
+                <div id="appearance-preview-character" class="appearance-preview-character">CLAWeb</div>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button id="appearance-reset" type="button" class="ghost">恢复默认</button>
+              <button id="appearance-save" type="button">保存</button>
             </div>
           </div>
-          <div class="modal-actions">
-            <button id="appearance-reset" type="button" class="ghost">恢复默认</button>
-            <button id="appearance-save" type="button">保存</button>
-          </div>
-        </div>
+        </section>
       </section>
-    </section>
-  </main>
+    </main>
 
-  <script>
-    window.CLAWEB_UI = {
-      title: "CLAWeb Demo",
-      characterName: "Demo Assistant",
-      avatar: "🌌",
-      avatarMode: "emoji"
-    };
-  </script>
-  <script src="/claweb/app.js?v=20260317-githubclean1"></script>
-</body>
+    <script>
+      window.CLAWEB_UI = {
+        title: "CLAWeb Demo",
+        characterName: "Demo Assistant",
+        avatar: "🌌",
+        avatarMode: "emoji",
+      };
+    </script>
+    <script src="/claweb/app.js?v=20260317-githubclean1"></script>
+  </body>
 </html>

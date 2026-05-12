@@ -69,7 +69,7 @@ function fetchJson(url, { method = "GET", headers = {}, body, insecure = false, 
           }
           resolve({ status: res.statusCode || 0, json });
         });
-      },
+      }
     );
 
     req.on("error", reject);
@@ -129,7 +129,7 @@ async function main() {
   console.log("[smoke-http] login ok; token prefix:", token.slice(0, 8) + "...");
 
   const historyUrl = `${base}/history?userId=${encodeURIComponent(args.userId)}&roomId=${encodeURIComponent(
-    args.roomId,
+    args.roomId
   )}&clientId=${encodeURIComponent(args.clientId)}&limit=${encodeURIComponent(String(args.limit))}`;
 
   const history = await fetchJson(historyUrl, {

@@ -74,7 +74,7 @@ function fetchJson(url, { method = "GET", headers = {}, body, insecure = false, 
           }
           resolve({ status: res.statusCode || 0, json });
         });
-      },
+      }
     );
 
     req.on("error", reject);
@@ -168,7 +168,7 @@ async function main() {
           clientId: args.clientId,
           userId: args.userId || undefined,
           roomId: args.roomId || undefined,
-        }),
+        })
       );
     });
 
@@ -189,7 +189,7 @@ async function main() {
             id: turnId,
             text: args.message,
             timestamp: Date.now(),
-          }),
+          })
         );
         return;
       }

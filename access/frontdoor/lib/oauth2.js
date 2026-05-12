@@ -23,7 +23,10 @@ import fs from "node:fs";
  * @param {Record<string, string>} env - process.env
  */
 export function parseOAuth2Config(env) {
-  const enabled = String(env.CLAWEB_OAUTH2_ENABLED || "").trim().toLowerCase() === "true";
+  const enabled =
+    String(env.CLAWEB_OAUTH2_ENABLED || "")
+      .trim()
+      .toLowerCase() === "true";
 
   const clientId = String(env.CLAWEB_OAUTH2_CLIENT_ID || "").trim();
 
@@ -38,6 +41,7 @@ export function parseOAuth2Config(env) {
     clientSecret = String(env.CLAWEB_OAUTH2_CLIENT_SECRET || "").trim();
   }
 
+  // prettier-ignore
   return {
     enabled,
     clientId,
@@ -72,7 +76,9 @@ export function validateOAuth2Config(config, log) {
     log("warn", "oauth2_config_incomplete", { missing: "CLAWEB_OAUTH2_TOKEN_URL" });
   }
   if (!config.userinfoUrl && !config.userinfoInToken) {
-    log("warn", "oauth2_config_incomplete", { missing: "CLAWEB_OAUTH2_USERINFO_URL or CLAWEB_OAUTH2_USERINFO_IN_TOKEN" });
+    log("warn", "oauth2_config_incomplete", {
+      missing: "CLAWEB_OAUTH2_USERINFO_URL or CLAWEB_OAUTH2_USERINFO_IN_TOKEN",
+    });
   }
   log("info", "oauth2_mode_enabled", { introspect: Boolean(config.introspectUrl) });
 }
@@ -88,7 +94,6 @@ export function validateOAuth2Config(config, log) {
  * @param {{ sessionsByToken: Map<string, object>, log: Function }} deps
  */
 export function createOAuth2Handler(config, { sessionsByToken, log }) {
-
   // --- session construction ---
 
   function buildSessionFromOAuth2(userinfo, accessToken) {
@@ -101,9 +106,7 @@ export function createOAuth2Handler(config, { sessionsByToken, log }) {
       token,
       userId: String(userinfo.uuid || userinfo.sub || identity),
       roomId: config.defaultRoomId,
-      clientId: config.defaultClientIdPrefix
-        ? `${config.defaultClientIdPrefix}${identity}`
-        : identity,
+      clientId: config.defaultClientIdPrefix ? `${config.defaultClientIdPrefix}${identity}` : identity,
       wsUrl: "/ws",
     };
     if (config.introspectUrl && accessToken) {
@@ -123,7 +126,7 @@ export function createOAuth2Handler(config, { sessionsByToken, log }) {
       const resp = await fetch(config.introspectUrl, {
         method: "POST",
         headers: {
-          "Authorization": `Basic ${creds}`,
+          Authorization: `Basic ${creds}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({ token: accessToken }).toString(),
@@ -173,13 +176,14 @@ export function createOAuth2Handler(config, { sessionsByToken, log }) {
       const params = new URLSearchParams({ grant_type: "password", username, password });
       const useBasicAuth = Boolean(config.clientId && config.clientSecret);
       // Only add client credentials to body if NOT using Basic auth header
-      if (!useBasicAuth && config.clientId)     params.set("client_id",     config.clientId);
+      if (!useBasicAuth && config.clientId) params.set("client_id", config.clientId);
       if (!useBasicAuth && config.clientSecret) params.set("client_secret", config.clientSecret);
       if (config.scope) params.set("scope", config.scope);
 
       const headers = { "Content-Type": "application/x-www-form-urlencoded" };
       if (useBasicAuth) {
-        headers["Authorization"] = `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`;
+        headers["Authorization"] =
+          `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`;
       }
 
       const tokenResp = await fetch(config.tokenUrl, { method: "POST", headers, body: params.toString() });
@@ -212,7 +216,7 @@ export function createOAuth2Handler(config, { sessionsByToken, log }) {
         }
       } else {
         const uiResp = await fetch(config.userinfoUrl, {
-          headers: { "Authorization": `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!uiResp.ok) {
           log("warn", "oauth2_userinfo_failed", { status: uiResp.status });

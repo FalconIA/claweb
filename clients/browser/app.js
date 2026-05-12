@@ -186,11 +186,14 @@ function persistUiBranding() {
 function persistSession(session) {
   try {
     if (!session) return;
-    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
-      ...session,
-      wsUrl: normalizeWsUrl(session.wsUrl),
-      clientId: String(session.clientId || ""),
-    }));
+    window.localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        ...session,
+        wsUrl: normalizeWsUrl(session.wsUrl),
+        clientId: String(session.clientId || ""),
+      })
+    );
   } catch {
     // ignore
   }
@@ -445,7 +448,7 @@ function addMessageRich({
           showMsgMenu({ x: touchStartX, y: touchStartY, messageId, messageText: text });
         }, 550);
       },
-      { passive: true },
+      { passive: true }
     );
 
     const cancelLongPress = () => {
@@ -465,7 +468,7 @@ function addMessageRich({
         const dy = Math.abs(t.clientY - touchStartY);
         if (dx > 12 || dy > 12) cancelLongPress();
       },
-      { passive: true },
+      { passive: true }
     );
   }
 
@@ -478,7 +481,9 @@ function addMessageRich({
     const quoted = state.messageIndex.get(normalizedReplyTo);
     const quotedText = quoted?.text
       ? String(quoted.text)
-      : (replyPreview ? String(replyPreview) : "(message not in view)");
+      : replyPreview
+        ? String(replyPreview)
+        : "(message not in view)";
 
     quote.textContent = `Reply to: ${compactReplyPreview(quotedText, 72)}`;
 
@@ -668,7 +673,8 @@ function appendTextWithAutoLinks(parent, text) {
 function appendInlineMarkdown(parent, text) {
   const { protectedText, escaped } = protectEscapedMarkdown(text);
   const source = protectedText;
-  const tokenRe = /(\*\*([^\s*](?:[^\n]*?[^\s*])?)\*\*)|(\*([^\s*](?:[^\n]*?[^\s*])?)\*)|(`([^\n`]+?)`)|(\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\))|(\n)/g;
+  const tokenRe =
+    /(\*\*([^\s*](?:[^\n]*?[^\s*])?)\*\*)|(\*([^\s*](?:[^\n]*?[^\s*])?)\*)|(`([^\n`]+?)`)|(\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\))|(\n)/g;
   let lastIndex = 0;
   let match;
 
@@ -735,7 +741,11 @@ function isMarkdownTableSeparatorLine(line) {
 }
 
 function parseTableCells(line) {
-  return String(line).replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+  return String(line)
+    .replace(/^\s*\|/, "")
+    .replace(/\|\s*$/, "")
+    .split("|")
+    .map((c) => c.trim());
 }
 
 function renderRichTextFragment(text) {
@@ -953,7 +963,9 @@ function renderSearchResults(results, query) {
 }
 
 function runLocalSearch(query) {
-  const q = String(query || "").trim().toLowerCase();
+  const q = String(query || "")
+    .trim()
+    .toLowerCase();
   if (!q) return [];
 
   const results = [];
@@ -1146,13 +1158,8 @@ function inferMediaFilename(mediaUrl, mediaType = "") {
     }
   }
 
-  const ext = extMap[type]
-    || (type.startsWith("video/") ? "mp4" : type.startsWith("image/") ? "png" : "bin");
-  const prefix = type.startsWith("video/")
-    ? "video"
-    : type.startsWith("image/")
-      ? "image"
-      : "attachment";
+  const ext = extMap[type] || (type.startsWith("video/") ? "mp4" : type.startsWith("image/") ? "png" : "bin");
+  const prefix = type.startsWith("video/") ? "video" : type.startsWith("image/") ? "image" : "attachment";
   return `${prefix}-${Date.now()}.${ext}`;
 }
 
@@ -1489,9 +1496,7 @@ function connect(opts = {}) {
     if (frame.type === "error") {
       const reason = frame.message || "unknown error";
       addMessage("system", `Server error: ${reason}`);
-      const pendingCandidates = [frame.id, frame.replyTo, frame.parentId]
-        .map(normalizeId)
-        .filter(Boolean);
+      const pendingCandidates = [frame.id, frame.replyTo, frame.parentId].map(normalizeId).filter(Boolean);
       for (const cid of pendingCandidates) {
         if (!state.pendingById.has(cid)) continue;
         const pending = state.pendingById.get(cid);
@@ -1581,7 +1586,7 @@ async function canvasToBlob(canvas, mime, quality) {
           else reject(new Error("to_blob_failed"));
         },
         mime,
-        quality,
+        quality
       );
     } catch (e) {
       reject(e);
@@ -1635,25 +1640,14 @@ async function compressImageSource(opts = {}) {
   const srcBytes = Number(sourceFile?.size || dataUrlByteLength(inputDataUrl) || 0) || null;
 
   const looksLikeScreenshot =
-    sourceMime === "image/png" ||
-    /screenshot|screen shot|snip|截屏|截图|屏幕快照/.test(sourceName);
+    sourceMime === "image/png" || /screenshot|screen shot|snip|截屏|截图|屏幕快照/.test(sourceName);
 
   const isLarge = !!srcBytes && srcBytes > 4 * 1024 * 1024;
   const isHuge = !!srcBytes && srcBytes > 8 * 1024 * 1024;
   const isVeryHuge = !!srcBytes && srcBytes > 14 * 1024 * 1024;
   const maxSide = Number(
     opts.maxSide ||
-      (looksLikeScreenshot
-        ? isVeryHuge
-          ? 1440
-          : isHuge
-            ? 1800
-            : 2200
-        : isVeryHuge
-          ? 1080
-          : isHuge
-            ? 1280
-            : 1600),
+      (looksLikeScreenshot ? (isVeryHuge ? 1440 : isHuge ? 1800 : 2200) : isVeryHuge ? 1080 : isHuge ? 1280 : 1600)
   );
   const targetMaxBytes = Number(
     opts.targetMaxBytes ||
@@ -1667,7 +1661,7 @@ async function compressImageSource(opts = {}) {
           ? 700 * 1024
           : isHuge
             ? 900 * 1024
-            : 1200 * 1024),
+            : 1200 * 1024)
   );
   const preferWebp = opts.preferWebp !== false;
 
@@ -1689,11 +1683,7 @@ async function compressImageSource(opts = {}) {
   const sh = Number(loaded?.height || 0);
   if (!sw || !sh) throw new Error("bad_image_dimensions");
 
-  const shouldKeepOriginal =
-    !isLarge &&
-    !isHuge &&
-    !isVeryHuge &&
-    Math.max(sw, sh) <= 2400;
+  const shouldKeepOriginal = !isLarge && !isHuge && !isVeryHuge && Math.max(sw, sh) <= 2400;
 
   if (shouldKeepOriginal) {
     try {
@@ -2019,10 +2009,7 @@ async function uploadPendingImage() {
   return {
     mediaUrl: data.mediaUrl || data.relUrl,
     mediaType:
-      data.mediaType ||
-      state.pendingImage.compressedMime ||
-      state.pendingImage.mime ||
-      "application/octet-stream",
+      data.mediaType || state.pendingImage.compressedMime || state.pendingImage.mime || "application/octet-stream",
   };
 }
 
@@ -2056,7 +2043,9 @@ async function sendCurrentMessage() {
     messageId: id,
     replyTo: state.composingReplyTo,
     replyPreview: state.composingReplyTo
-      ? (state.messageIndex.get(state.composingReplyTo)?.replyPreview || state.messageIndex.get(state.composingReplyTo)?.text || null)
+      ? state.messageIndex.get(state.composingReplyTo)?.replyPreview ||
+        state.messageIndex.get(state.composingReplyTo)?.text ||
+        null
       : null,
     mediaUrl: uploadResult?.mediaUrl || null,
     mediaType: uploadResult?.mediaType || null,
@@ -2162,16 +2151,12 @@ function isThreadsModalOpen() {
 async function loadThreads() {
   if (!state.session) throw new Error("not_logged_in");
 
-  const { resp, data } = await fetchJsonWithFallback(
-    "/threads",
-    "/claweb/threads",
-    {
-      method: "GET",
-      headers: {
-        "x-claweb-token": state.session.token,
-      },
+  const { resp, data } = await fetchJsonWithFallback("/threads", "/claweb/threads", {
+    method: "GET",
+    headers: {
+      "x-claweb-token": state.session.token,
     },
-  );
+  });
 
   if (!resp.ok || !data || data.ok !== true) {
     throw new Error(data?.error || `threads_failed_${resp.status}`);
@@ -2450,7 +2435,7 @@ window.addEventListener(
       if (!(target && el.moreMenu.contains(target)) && target !== el.moreBtn) hideMoreMenu();
     }
   },
-  { capture: true },
+  { capture: true }
 );
 
 window.addEventListener(
@@ -2459,7 +2444,7 @@ window.addEventListener(
     if (el.msgMenu && !el.msgMenu.classList.contains("hidden")) hideMsgMenu();
     if (el.moreMenu && !el.moreMenu.classList.contains("hidden")) hideMoreMenu();
   },
-  { passive: true },
+  { passive: true }
 );
 
 if (el.searchInput) {

@@ -130,9 +130,7 @@ function guessMediaType(ref: string): string | undefined {
   const dataMatch = raw.match(/^data:([^;,]+)[;,]/i);
   if (dataMatch?.[1]) return dataMatch[1].trim().toLowerCase();
 
-  const candidate = raw.startsWith("file://")
-    ? new URL(raw).pathname
-    : raw.replace(/[?#].*$/, "");
+  const candidate = raw.startsWith("file://") ? new URL(raw).pathname : raw.replace(/[?#].*$/, "");
   return guessMimeFromExt(path.extname(candidate).toLowerCase()) || undefined;
 }
 
@@ -202,7 +200,13 @@ function ensureFilename(name: string | undefined, mediaType: string | undefined)
   return ext ? `${safe}${ext}` : safe;
 }
 
-function pushCandidate(out: MediaCandidate[], seen: Set<string>, ref: unknown, mediaType?: unknown, mediaFilename?: unknown) {
+function pushCandidate(
+  out: MediaCandidate[],
+  seen: Set<string>,
+  ref: unknown,
+  mediaType?: unknown,
+  mediaFilename?: unknown
+) {
   if (typeof ref !== "string") return;
   const value = ref.trim();
   if (!value || seen.has(value)) return;
@@ -210,7 +214,8 @@ function pushCandidate(out: MediaCandidate[], seen: Set<string>, ref: unknown, m
   out.push({
     ref: value,
     mediaType: normalizeMediaType(mediaType) || guessMediaType(value),
-    mediaFilename: typeof mediaFilename === "string" && mediaFilename.trim() ? mediaFilename.trim() : guessFilename(value),
+    mediaFilename:
+      typeof mediaFilename === "string" && mediaFilename.trim() ? mediaFilename.trim() : guessFilename(value),
   });
 }
 
@@ -240,7 +245,13 @@ function collectMediaCandidates(payload: unknown): MediaCandidate[] {
         pushCandidate(out, seen, item, "image/*");
       } else if (item && typeof item === "object") {
         const rec = item as Record<string, unknown>;
-        pushCandidate(out, seen, rec.url ?? rec.mediaUrl ?? rec.path ?? rec.mediaPath, rec.mediaType ?? rec.type, rec.mediaFilename ?? rec.filename ?? rec.name);
+        pushCandidate(
+          out,
+          seen,
+          rec.url ?? rec.mediaUrl ?? rec.path ?? rec.mediaPath,
+          rec.mediaType ?? rec.type,
+          rec.mediaFilename ?? rec.filename ?? rec.name
+        );
       }
     }
   }
@@ -249,13 +260,27 @@ function collectMediaCandidates(payload: unknown): MediaCandidate[] {
   for (const block of blocks) {
     if (!block || typeof block !== "object") continue;
     const rec = block as Record<string, unknown>;
-    pushCandidate(out, seen, rec.mediaUrl ?? rec.url ?? rec.imageUrl, rec.mediaType ?? rec.type, rec.mediaFilename ?? rec.filename ?? rec.name);
-    pushCandidate(out, seen, rec.mediaPath ?? rec.path ?? rec.imagePath ?? rec.filePath, rec.mediaType ?? rec.type, rec.mediaFilename ?? rec.filename ?? rec.name);
+    pushCandidate(
+      out,
+      seen,
+      rec.mediaUrl ?? rec.url ?? rec.imageUrl,
+      rec.mediaType ?? rec.type,
+      rec.mediaFilename ?? rec.filename ?? rec.name
+    );
+    pushCandidate(
+      out,
+      seen,
+      rec.mediaPath ?? rec.path ?? rec.imagePath ?? rec.filePath,
+      rec.mediaType ?? rec.type,
+      rec.mediaFilename ?? rec.filename ?? rec.name
+    );
     if (Array.isArray(rec.mediaUrls)) {
-      for (const ref of rec.mediaUrls) pushCandidate(out, seen, ref, rec.mediaType ?? rec.type, rec.mediaFilename ?? rec.filename ?? rec.name);
+      for (const ref of rec.mediaUrls)
+        pushCandidate(out, seen, ref, rec.mediaType ?? rec.type, rec.mediaFilename ?? rec.filename ?? rec.name);
     }
     if (Array.isArray(rec.mediaPaths)) {
-      for (const ref of rec.mediaPaths) pushCandidate(out, seen, ref, rec.mediaType ?? rec.type, rec.mediaFilename ?? rec.filename ?? rec.name);
+      for (const ref of rec.mediaPaths)
+        pushCandidate(out, seen, ref, rec.mediaType ?? rec.type, rec.mediaFilename ?? rec.filename ?? rec.name);
     }
   }
 
@@ -310,10 +335,11 @@ async function resolveMedia(payload: unknown): Promise<{
   const candidate = collectMediaCandidates(payload)[0];
   if (!candidate) return {};
 
-  const mediaType = candidate.mediaType
-    || guessMediaType(candidate.ref)
-    || (/^https?:\/\//i.test(candidate.ref) ? await probeRemoteMediaType(candidate.ref) : undefined)
-    || "application/octet-stream";
+  const mediaType =
+    candidate.mediaType ||
+    guessMediaType(candidate.ref) ||
+    (/^https?:\/\//i.test(candidate.ref) ? await probeRemoteMediaType(candidate.ref) : undefined) ||
+    "application/octet-stream";
   const mediaFilename = ensureFilename(candidate.mediaFilename || guessFilename(candidate.ref), mediaType);
 
   if (/^data:/i.test(candidate.ref)) {
@@ -324,9 +350,7 @@ async function resolveMedia(payload: unknown): Promise<{
     return { mediaUrl: candidate.ref, mediaType, mediaFilename };
   }
 
-  const filePath = candidate.ref.startsWith("file://")
-    ? new URL(candidate.ref).pathname
-    : path.resolve(candidate.ref);
+  const filePath = candidate.ref.startsWith("file://") ? new URL(candidate.ref).pathname : path.resolve(candidate.ref);
 
   if (!isRenderableMediaType(mediaType)) {
     const servedUrl = await copyLocalFileToServedUrl(filePath, mediaFilename || path.basename(filePath));
@@ -345,16 +369,20 @@ export function createWsDeliver(ws: WebSocket, messageId: string) {
     const candidates = collectMediaCandidates(payload);
     const media = await resolveMedia(payload);
     try {
-      const payloadKeys = payload && typeof payload === "object" ? Object.keys(payload as Record<string, unknown>).slice(0, 24) : [];
-      const payloadObj = payload && typeof payload === "object" ? payload as Record<string, unknown> : null;
-      const rawMediaUrl = payloadObj ? String(payloadObj.mediaUrl || payloadObj.path || payloadObj.filePath || "").trim() : "";
-      const rawMediaUrls = payloadObj && Array.isArray(payloadObj.mediaUrls)
-        ? payloadObj.mediaUrls.map((item) => String(item || "").trim()).filter(Boolean)
-        : [];
+      const payloadKeys =
+        payload && typeof payload === "object" ? Object.keys(payload as Record<string, unknown>).slice(0, 24) : [];
+      const payloadObj = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+      const rawMediaUrl = payloadObj
+        ? String(payloadObj.mediaUrl || payloadObj.path || payloadObj.filePath || "").trim()
+        : "";
+      const rawMediaUrls =
+        payloadObj && Array.isArray(payloadObj.mediaUrls)
+          ? payloadObj.mediaUrls.map((item) => String(item || "").trim()).filter(Boolean)
+          : [];
       const rawMediaDataUrl = payloadObj ? String(payloadObj.mediaDataUrl || "").trim() : "";
       const textPreview = text ? text.slice(0, 240).replace(/\s+/g, " ") : "";
       console.log(
-        `[claweb][deliver] messageId=${messageId} kind=${info?.kind || "unknown"} text=${text ? "yes" : "no"} textPreview=${JSON.stringify(textPreview)} candidates=${candidates.length} rawMediaUrl=${rawMediaUrl ? "yes" : "no"} rawMediaUrls=${rawMediaUrls.length} rawMediaDataUrl=${rawMediaDataUrl ? "yes" : "no"} mediaUrl=${media.mediaUrl ? "yes" : "no"} mediaDataUrl=${media.mediaDataUrl ? "yes" : "no"} mediaType=${media.mediaType || "none"} mediaFilename=${media.mediaFilename || "none"} keys=${payloadKeys.join(",")}`,
+        `[claweb][deliver] messageId=${messageId} kind=${info?.kind || "unknown"} text=${text ? "yes" : "no"} textPreview=${JSON.stringify(textPreview)} candidates=${candidates.length} rawMediaUrl=${rawMediaUrl ? "yes" : "no"} rawMediaUrls=${rawMediaUrls.length} rawMediaDataUrl=${rawMediaDataUrl ? "yes" : "no"} mediaUrl=${media.mediaUrl ? "yes" : "no"} mediaDataUrl=${media.mediaDataUrl ? "yes" : "no"} mediaType=${media.mediaType || "none"} mediaFilename=${media.mediaFilename || "none"} keys=${payloadKeys.join(",")}`
       );
     } catch {
       // ignore logging failure

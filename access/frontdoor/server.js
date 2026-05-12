@@ -29,14 +29,21 @@ const __dirname = path.dirname(__filename);
 
   for (const file of candidates) {
     let raw;
-    try { raw = fs.readFileSync(file, "utf8"); } catch { continue; }
+    try {
+      raw = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
     for (const line of raw.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
       const eq = trimmed.indexOf("=");
       if (eq < 1) continue;
       const key = trimmed.slice(0, eq).trim();
-      const val = trimmed.slice(eq + 1).trim().replace(/^(['"])(.*)\1$/, "$2");
+      const val = trimmed
+        .slice(eq + 1)
+        .trim()
+        .replace(/^(['"])(.*)\1$/, "$2");
       if (key && !(key in process.env)) process.env[key] = val;
     }
     console.log(`[frontdoor] Loaded env from: ${file}`);
@@ -49,25 +56,16 @@ const ENV = process.env;
 const BIND = (ENV.BIND || "127.0.0.1").trim();
 const PORT = Number(ENV.PORT || 18081);
 
-const STATIC_ROOT = path.resolve(
-  __dirname,
-  (ENV.CLAWEB_STATIC_ROOT || "../../clients/browser").trim(),
-);
+const STATIC_ROOT = path.resolve(__dirname, (ENV.CLAWEB_STATIC_ROOT || "../../clients/browser").trim());
 
 const LOGIN_CONFIG_PATH = path.resolve(
   __dirname,
-  (ENV.CLAWEB_LOGIN_CONFIG || "./config/claweb-login.example.json").trim(),
+  (ENV.CLAWEB_LOGIN_CONFIG || "./config/claweb-login.example.json").trim()
 );
 
-const HISTORY_DIR = path.resolve(
-  __dirname,
-  (ENV.CLAWEB_HISTORY_DIR || "./data/history").trim(),
-);
+const HISTORY_DIR = path.resolve(__dirname, (ENV.CLAWEB_HISTORY_DIR || "./data/history").trim());
 
-const MEDIA_DIR = path.resolve(
-  __dirname,
-  (ENV.CLAWEB_MEDIA_DIR || "./data/media").trim(),
-);
+const MEDIA_DIR = path.resolve(__dirname, (ENV.CLAWEB_MEDIA_DIR || "./data/media").trim());
 
 const RECENT_LIMIT = Math.max(1, Math.min(1000, Number(ENV.CLAWEB_RECENT_LIMIT || 60) || 60));
 const RECENT_TTL_DAYS = Math.max(1, Number(ENV.CLAWEB_RECENT_TTL_DAYS || 7) || 7);
@@ -79,9 +77,7 @@ const FILE_MAX_BYTES = FILE_MAX_MB * 1024 * 1024;
 const UPSTREAM_WS = (ENV.CLAWEB_UPSTREAM_WS || "ws://127.0.0.1:18999").trim();
 const UPSTREAM_TOKEN = (
   ENV.CLAWEB_UPSTREAM_TOKEN ||
-  (ENV.CLAWEB_UPSTREAM_TOKEN_FILE
-    ? fs.readFileSync(ENV.CLAWEB_UPSTREAM_TOKEN_FILE, "utf8")
-    : "")
+  (ENV.CLAWEB_UPSTREAM_TOKEN_FILE ? fs.readFileSync(ENV.CLAWEB_UPSTREAM_TOKEN_FILE, "utf8") : "")
 ).trim();
 const UI_TITLE = String(ENV.CLAWEB_UI_TITLE || "").trim();
 const UI_CHARACTER_NAME = String(ENV.CLAWEB_UI_CHARACTER_NAME || ENV.CLAWEB_ASSISTANT_NAME || "").trim();
@@ -90,7 +86,7 @@ const UI_AVATAR_MODE = String(ENV.CLAWEB_UI_AVATAR_MODE || "").trim();
 
 if (!UPSTREAM_TOKEN) {
   console.warn(
-    "[frontdoor] WARNING: missing CLAWEB_UPSTREAM_TOKEN (or *_TOKEN_FILE). WS proxy will auth-fail until configured.",
+    "[frontdoor] WARNING: missing CLAWEB_UPSTREAM_TOKEN (or *_TOKEN_FILE). WS proxy will auth-fail until configured."
   );
 }
 
@@ -206,7 +202,9 @@ function guessMimeFromExt(ext) {
 }
 
 function guessExtFromMime(mime) {
-  const m = String(mime || "").trim().toLowerCase();
+  const m = String(mime || "")
+    .trim()
+    .toLowerCase();
   if (m === "application/pdf") return ".pdf";
   if (m === "application/msword") return ".doc";
   if (m === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return ".docx";
@@ -281,9 +279,11 @@ function parseContentDisposition(v) {
     .filter(Boolean)
     .forEach((pair) => {
       const [k, ...rest] = pair.split("=");
-      const key = String(k || "").trim().toLowerCase();
+      const key = String(k || "")
+        .trim()
+        .toLowerCase();
       let val = rest.join("=").trim();
-      if (val.startsWith("\"") && val.endsWith("\"")) val = val.slice(1, -1);
+      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
       if (key) out[key] = val;
     });
   return out;
@@ -334,7 +334,10 @@ async function readMultipartFile(req, { fieldName = "file", maxBytes }) {
     if (name === fieldName) {
       return {
         filename: filename || "upload.bin",
-        contentType: String(headers["content-type"] || "").trim().toLowerCase() || null,
+        contentType:
+          String(headers["content-type"] || "")
+            .trim()
+            .toLowerCase() || null,
         data,
       };
     }
@@ -431,7 +434,9 @@ async function probeMediaType(ref) {
         signal: controller.signal,
         headers: method === "GET" ? { Range: "bytes=0-0" } : undefined,
       });
-      return String(response.headers.get("content-type") || "").trim().toLowerCase();
+      return String(response.headers.get("content-type") || "")
+        .trim()
+        .toLowerCase();
     } catch {
       return "";
     } finally {
@@ -567,7 +572,13 @@ function parseLoginEnvVars() {
     const single = (ENV[`${p}PASSPHRASE`] || "").trim();
     if (single) passphrases.push(single);
     const multi = (ENV[`${p}PASSPHRASES`] || "").trim();
-    if (multi) passphrases.push(...multi.split(",").map((s) => s.trim()).filter(Boolean));
+    if (multi)
+      passphrases.push(
+        ...multi
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
     cfg[name] = {
       displayName: (ENV[`${p}DISPLAY_NAME`] || "").trim() || name,
       passphrases,
@@ -607,7 +618,12 @@ function findSessionByPassphrase(cfg, passphrase) {
   for (const [identity, entry] of Object.entries(cfg || {})) {
     if (!entry || typeof entry !== "object") continue;
     const passphrases = Array.isArray(entry.passphrases) ? entry.passphrases : [];
-    if (passphrases.map(String).map((s) => s.trim()).includes(passphrase)) {
+    if (
+      passphrases
+        .map(String)
+        .map((s) => s.trim())
+        .includes(passphrase)
+    ) {
       matches.push([identity, entry]);
     }
   }
@@ -701,9 +717,7 @@ async function updateRecentSnapshot({ userId, roomId, clientId, record }) {
   const last = kept[kept.length - 1] || null;
   const snapshot = {
     updatedAt: Date.now(),
-    cursor: last
-      ? { lastTs: last.ts, lastIdx: last._idx, lastMessageId: last.messageId || null }
-      : null,
+    cursor: last ? { lastTs: last.ts, lastIdx: last._idx, lastMessageId: last.messageId || null } : null,
     recentMessages: kept,
   };
 
@@ -764,14 +778,12 @@ async function loadRawHistory({ userId, roomId, clientId, limit }) {
   if (snap && Array.isArray(snap.recentMessages) && snap.recentMessages.length > 0) {
     metrics.history.snapshotHit += 1;
     const n = Math.max(0, Math.min(1000, Number(limit || 60) || 60));
-    const sorted = snap.recentMessages
-      .slice()
-      .sort((a, b) => {
-        const ta = Number(a.ts || 0);
-        const tb = Number(b.ts || 0);
-        if (ta !== tb) return ta - tb;
-        return Number(a._idx || 0) - Number(b._idx || 0);
-      });
+    const sorted = snap.recentMessages.slice().sort((a, b) => {
+      const ta = Number(a.ts || 0);
+      const tb = Number(b.ts || 0);
+      if (ta !== tb) return ta - tb;
+      return Number(a._idx || 0) - Number(b._idx || 0);
+    });
 
     const previewByMessageId = new Map();
     for (const m of sorted) {
@@ -929,9 +941,8 @@ async function serveStatic(req, res) {
       return;
     }
     const data = await fsp.readFile(resolved);
-    const body = path.extname(resolved).toLowerCase() === ".html"
-      ? Buffer.from(injectUiConfig(String(data)), "utf8")
-      : data;
+    const body =
+      path.extname(resolved).toLowerCase() === ".html" ? Buffer.from(injectUiConfig(String(data)), "utf8") : data;
     res.writeHead(200, {
       "content-type": contentTypeFor(resolved),
       "content-length": String(body.length),
@@ -1031,11 +1042,32 @@ const server = http.createServer(async (req, res) => {
     // Public, non-sensitive UI config.
     const loginFields = oauth2Config.enabled
       ? [
-          { id: "login-username", type: "text",     name: "username",   label: "用户名", autocomplete: "username",         placeholder: "输入用户名" },
-          { id: "login-password", type: "password", name: "password",   label: "密码",   autocomplete: "current-password", placeholder: "输入密码"   },
+          {
+            id: "login-username",
+            type: "text",
+            name: "username",
+            label: "用户名",
+            autocomplete: "username",
+            placeholder: "输入用户名",
+          },
+          {
+            id: "login-password",
+            type: "password",
+            name: "password",
+            label: "密码",
+            autocomplete: "current-password",
+            placeholder: "输入密码",
+          },
         ]
       : [
-          { id: "passphrase-input", type: "password", name: "passphrase", label: "口令", autocomplete: "current-password", placeholder: "输入口令" },
+          {
+            id: "passphrase-input",
+            type: "password",
+            name: "passphrase",
+            label: "口令",
+            autocomplete: "current-password",
+            placeholder: "输入口令",
+          },
         ];
     return json(res, 200, {
       ok: true,
@@ -1057,7 +1089,13 @@ const server = http.createServer(async (req, res) => {
     try {
       const saved = saveDataUrlImage(dataUrl, filename || "image.png");
       const absUrl = buildAbsoluteMediaUrl(req.headers.host, saved.relUrl);
-      return json(res, 200, { ok: true, mediaUrl: absUrl, mediaType: saved.mime, relUrl: saved.relUrl, mediaFilename: filename || null });
+      return json(res, 200, {
+        ok: true,
+        mediaUrl: absUrl,
+        mediaType: saved.mime,
+        relUrl: saved.relUrl,
+        mediaFilename: filename || null,
+      });
     } catch {
       return json(res, 400, { ok: false, error: "upload_failed" });
     }
@@ -1080,7 +1118,8 @@ const server = http.createServer(async (req, res) => {
       const filePath = path.join(MEDIA_DIR, fileName);
       await fsp.writeFile(filePath, part.data);
 
-      const mime = part.contentType && part.contentType !== "application/octet-stream" ? part.contentType : guessMimeFromExt(ext);
+      const mime =
+        part.contentType && part.contentType !== "application/octet-stream" ? part.contentType : guessMimeFromExt(ext);
       const relUrl = `/media/${fileName}`;
       const absUrl = buildAbsoluteMediaUrl(req.headers.host, relUrl);
       return json(res, 200, {
@@ -1206,7 +1245,8 @@ wss.on("connection", (clientWs, req) => {
       clientId: state.session.clientId,
       turnId,
       mergedFrames: pending.frames,
-      flushMode: !text && (incomingMediaUrl || incomingMediaUrls.length > 0 || incomingMediaDataUrl) ? "media-only" : "merged",
+      flushMode:
+        !text && (incomingMediaUrl || incomingMediaUrls.length > 0 || incomingMediaDataUrl) ? "media-only" : "merged",
       hasText: Boolean(text),
       textPreview: text ? text.slice(0, 180) : null,
       textHasMediaToken,
@@ -1259,7 +1299,12 @@ wss.on("connection", (clientWs, req) => {
 
     if (!mediaUrl && incomingMediaDataUrl) {
       try {
-        const resolved = await resolveAssistantMediaRef(incomingMediaDataUrl, req.headers.host, mediaFilename || "assistant-attachment.bin", mediaType);
+        const resolved = await resolveAssistantMediaRef(
+          incomingMediaDataUrl,
+          req.headers.host,
+          mediaFilename || "assistant-attachment.bin",
+          mediaType
+        );
         mediaUrl = resolved.mediaUrl || "";
         mediaType = resolved.mediaType || mediaType;
         mediaFilename = resolved.mediaFilename || mediaFilename;
@@ -1333,7 +1378,8 @@ wss.on("connection", (clientWs, req) => {
     const nextText = String(frame.text || "").trim();
     if (nextText) {
       if (!current.text) current.text = nextText;
-      else if (current.text !== nextText && !current.text.includes(nextText)) current.text = `${current.text}\n\n${nextText}`;
+      else if (current.text !== nextText && !current.text.includes(nextText))
+        current.text = `${current.text}\n\n${nextText}`;
     }
 
     const nextMediaUrl = String(frame.mediaUrl || "").trim();
@@ -1356,16 +1402,15 @@ wss.on("connection", (clientWs, req) => {
     if (nextMediaDataUrl && !current.mediaDataUrl) current.mediaDataUrl = nextMediaDataUrl;
 
     current.replyTo = current.replyTo ?? frame.replyTo ?? frame.parentId ?? turnId ?? undefined;
-    current.replyPreview = current.replyPreview || (frame.replyPreview ? compactReplyPreview(String(frame.replyPreview)) : "");
+    current.replyPreview =
+      current.replyPreview || (frame.replyPreview ? compactReplyPreview(String(frame.replyPreview)) : "");
     current.frame = { ...current.frame, ...frame, mediaUrls: current.mediaUrls };
     current.frames += 1;
     for (const item of Object.keys(frame || {})) current.keys.add(item);
 
     if (current.timer) clearTimeout(current.timer);
     const hasAnyMedia = Boolean(current.mediaUrl || current.mediaDataUrl || current.mediaUrls.length > 0);
-    const flushDelayMs = hasAnyMedia && !current.text
-      ? ASSISTANT_MEDIA_ONLY_COALESCE_MS
-      : ASSISTANT_FRAME_COALESCE_MS;
+    const flushDelayMs = hasAnyMedia && !current.text ? ASSISTANT_MEDIA_ONLY_COALESCE_MS : ASSISTANT_FRAME_COALESCE_MS;
     current.timer = setTimeout(() => {
       flushPendingAssistant(key).catch((error) => {
         log("error", "assistant_frame_flush_failed", {
@@ -1565,7 +1610,7 @@ wss.on("connection", (clientWs, req) => {
             mediaUrl: mediaUrl || undefined,
             mediaType: mediaType || undefined,
             timestamp: ts,
-          }),
+          })
         );
       } else {
         sendClient({ type: "error", id, message: "upstream_not_ready" });

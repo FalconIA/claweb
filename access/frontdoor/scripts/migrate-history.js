@@ -26,7 +26,7 @@ function pad2(n) {
 function nowTag() {
   const d = new Date();
   return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(
-    d.getMinutes(),
+    d.getMinutes()
   )}${pad2(d.getSeconds())}`;
 }
 

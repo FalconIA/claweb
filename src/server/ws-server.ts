@@ -146,9 +146,7 @@ export async function startWsServer(input: StartWsServerInput): Promise<WsServer
 
       const messageId = parsed.id?.trim() || randomUUID();
       const timestamp =
-        typeof parsed.timestamp === "number" && Number.isFinite(parsed.timestamp)
-          ? parsed.timestamp
-          : Date.now();
+        typeof parsed.timestamp === "number" && Number.isFinite(parsed.timestamp) ? parsed.timestamp : Date.now();
 
       try {
         await input.onMessage({

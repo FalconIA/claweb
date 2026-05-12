@@ -20,27 +20,27 @@
 
 "use strict";
 const http = require("http");
-const fs   = require("fs");
+const fs = require("fs");
 const path = require("path");
-const net  = require("net");
+const net = require("net");
 const { URL } = require("url");
 
-const PORT     = Number(process.env.PORT     || process.argv[2] || 8080);
+const PORT = Number(process.env.PORT || process.argv[2] || 8080);
 const UPSTREAM = (process.env.UPSTREAM || process.argv[3] || "http://10.19.29.13:30111").replace(/\/$/, "");
 
 const STATIC_ROOT = __dirname;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
-  ".js":   "text/javascript; charset=utf-8",
-  ".css":  "text/css; charset=utf-8",
-  ".ico":  "image/x-icon",
-  ".png":  "image/png",
-  ".jpg":  "image/jpeg",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".svg":  "image/svg+xml",
+  ".svg": "image/svg+xml",
   ".webp": "image/webp",
-  ".woff2":"font/woff2",
+  ".woff2": "font/woff2",
   ".woff": "font/woff",
   ".json": "application/json; charset=utf-8",
 };
@@ -51,9 +51,7 @@ function mimeFor(filePath) {
 
 /** Strip the /claweb prefix (mirrors frontdoor's compat alias logic). */
 function stripClawebPrefix(pathname) {
-  return pathname.startsWith("/claweb/")
-    ? pathname.replace(/^\/claweb/, "")
-    : pathname;
+  return pathname.startsWith("/claweb/") ? pathname.replace(/^\/claweb/, "") : pathname;
 }
 
 /** Try to resolve a pathname to a real local file. */
@@ -79,10 +77,10 @@ const upstreamPort = Number(upstreamUrl.port) || 80;
 function proxyHttp(req, res) {
   const options = {
     hostname: upstreamHost,
-    port:     upstreamPort,
-    path:     req.url,
-    method:   req.method,
-    headers:  { ...req.headers, host: upstreamUrl.host },
+    port: upstreamPort,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: upstreamUrl.host },
   };
 
   const proxyReq = http.request(options, (proxyRes) => {
@@ -102,12 +100,12 @@ function proxyHttp(req, res) {
 
 const server = http.createServer((req, res) => {
   const parsed = new URL(req.url || "/", "http://localhost");
-  const local  = resolveLocal(parsed.pathname);
+  const local = resolveLocal(parsed.pathname);
 
   if (local) {
     const data = fs.readFileSync(local);
     res.writeHead(200, {
-      "content-type":  mimeFor(local),
+      "content-type": mimeFor(local),
       "cache-control": "no-store",
       "content-length": String(data.length),
     });
@@ -126,10 +124,10 @@ server.on("upgrade", (req, clientSocket, head) => {
   const conn = net.connect(upstreamPort, upstreamHost, () => {
     conn.write(
       `${req.method} ${req.url} HTTP/${req.httpVersion}\r\n` +
-      Object.entries(req.headers)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\r\n") +
-      "\r\n\r\n"
+        Object.entries(req.headers)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\r\n") +
+        "\r\n\r\n"
     );
     if (head && head.length) conn.write(head);
     conn.pipe(clientSocket, { end: true });

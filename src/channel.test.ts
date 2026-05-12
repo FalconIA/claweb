@@ -19,9 +19,7 @@ function makeCfg(patch: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
-function makeCfgWithAccounts(
-  accounts: Record<string, Record<string, unknown>>,
-): Record<string, unknown> {
+function makeCfgWithAccounts(accounts: Record<string, Record<string, unknown>>): Record<string, unknown> {
   return {
     channels: {
       claweb: {
@@ -68,10 +66,7 @@ describe("clawebPlugin config.resolveAccount", () => {
   });
 
   it("falls back to defaults when fields missing", () => {
-    const account = clawebPlugin.config!.resolveAccount!(
-      { channels: { claweb: {} } } as any,
-      undefined,
-    );
+    const account = clawebPlugin.config!.resolveAccount!({ channels: { claweb: {} } } as any, undefined);
     expect(account.listenHost).toBe("127.0.0.1");
     expect(account.listenPort).toBe(18999);
     expect(account.enabled).toBe(false);
@@ -102,16 +97,13 @@ describe("clawebPlugin config.isConfigured", () => {
   it("returns true when authTokenFile present", () => {
     const account = clawebPlugin.config!.resolveAccount!(
       makeCfg({ authToken: undefined, authTokenFile: "/run/secrets/token" }) as any,
-      undefined,
+      undefined
     );
     expect(clawebPlugin.config!.isConfigured!(account, undefined as any)).toBe(true);
   });
 
   it("returns false when neither token field is set", () => {
-    const account = clawebPlugin.config!.resolveAccount!(
-      makeCfg({ authToken: undefined }) as any,
-      undefined,
-    );
+    const account = clawebPlugin.config!.resolveAccount!(makeCfg({ authToken: undefined }) as any, undefined);
     expect(clawebPlugin.config!.isConfigured!(account, undefined as any)).toBe(false);
   });
 });
@@ -134,10 +126,7 @@ describe("clawebPlugin config.describeAccount", () => {
   });
 
   it("reports configured=false when no token", () => {
-    const account = clawebPlugin.config!.resolveAccount!(
-      makeCfg({ authToken: undefined }) as any,
-      undefined,
-    );
+    const account = clawebPlugin.config!.resolveAccount!(makeCfg({ authToken: undefined }) as any, undefined);
     const desc = clawebPlugin.config!.describeAccount!(account, undefined as any);
     expect(desc.configured).toBe(false);
   });

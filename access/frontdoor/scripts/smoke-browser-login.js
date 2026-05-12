@@ -68,16 +68,16 @@ function parseArgs(argv) {
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--base")            args.base       = argv[++i] ?? args.base;
+    if (a === "--base") args.base = argv[++i] ?? args.base;
     else if (a === "--passphrase") args.passphrase = argv[++i] ?? "";
-    else if (a === "--username")   args.username   = argv[++i] ?? "";
-    else if (a === "--password")   args.password   = argv[++i] ?? "";
-    else if (a === "--chrome")     args.chrome     = argv[++i] ?? "";
-    else if (a === "--timeout")    args.timeout    = Number(argv[++i] ?? args.timeout);
-    else if (a === "--slow")       args.slow       = Number(argv[++i] ?? args.slow);
-    else if (a === "--no-close")   args.noClose    = true;
-    else if (a === "--mock")       args.mock       = true;
-    else if (a === "--oauth2")     args.oauth2     = true;
+    else if (a === "--username") args.username = argv[++i] ?? "";
+    else if (a === "--password") args.password = argv[++i] ?? "";
+    else if (a === "--chrome") args.chrome = argv[++i] ?? "";
+    else if (a === "--timeout") args.timeout = Number(argv[++i] ?? args.timeout);
+    else if (a === "--slow") args.slow = Number(argv[++i] ?? args.slow);
+    else if (a === "--no-close") args.noClose = true;
+    else if (a === "--mock") args.mock = true;
+    else if (a === "--oauth2") args.oauth2 = true;
   }
   // --oauth2 implies --mock and sets oauth2 credential defaults
   if (args.oauth2) {
@@ -107,7 +107,9 @@ function findChrome(hint = "") {
     const pw = require("playwright-core");
     const p = pw.chromium.executablePath();
     if (p && existsSync(p)) return p;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 2. Windows registry / well-known paths
   const candidates = [
@@ -121,9 +123,7 @@ function findChrome(hint = "") {
     if (existsSync(c)) return c;
   }
 
-  throw new Error(
-    "Cannot find Chrome or Edge. Install one or pass --chrome <path>."
-  );
+  throw new Error("Cannot find Chrome or Edge. Install one or pass --chrome <path>.");
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +185,9 @@ function spawnMockOAuth2Provider(port) {
 
       if (req.method === "POST" && req.url === "/token") {
         let raw = "";
-        req.on("data", (c) => { raw += c; });
+        req.on("data", (c) => {
+          raw += c;
+        });
         req.on("end", () => {
           const params = new URLSearchParams(raw);
           const user = params.get("username");
@@ -222,7 +224,10 @@ function waitForPort(port, timeoutMs = 10_000) {
     const deadline = Date.now() + timeoutMs;
     function attempt() {
       const sock = createConnection(port, "127.0.0.1");
-      sock.once("connect", () => { sock.destroy(); resolve(); });
+      sock.once("connect", () => {
+        sock.destroy();
+        resolve();
+      });
       sock.once("error", () => {
         sock.destroy();
         if (Date.now() >= deadline) return reject(new Error(`Port ${port} not ready after ${timeoutMs}ms`));
@@ -247,18 +252,16 @@ async function spawnMockServer(mode) {
 
   writeMockEnv(envPath, mode, MOCK_OAUTH2_PROVIDER_PORT);
 
-  const child = spawn(
-    process.execPath,
-    [path.join(root, "server.js")],
-    {
-      env: { ...process.env, CLAWEB_ENV_FILE: envPath },
-      stdio: ["ignore", "pipe", "pipe"],
-      cwd: root,
-    }
-  );
+  const child = spawn(process.execPath, [path.join(root, "server.js")], {
+    env: { ...process.env, CLAWEB_ENV_FILE: envPath },
+    stdio: ["ignore", "pipe", "pipe"],
+    cwd: root,
+  });
 
   child.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`.replace(/\n/g, "\n[server] ").trimEnd() + "\n"));
-  child.stderr.on("data", (d) => process.stderr.write(`[server:err] ${d}`.replace(/\n/g, "\n[server:err] ").trimEnd() + "\n"));
+  child.stderr.on("data", (d) =>
+    process.stderr.write(`[server:err] ${d}`.replace(/\n/g, "\n[server:err] ").trimEnd() + "\n")
+  );
 
   await waitForPort(MOCK_PORT, 12_000);
   child._oauth2Srv = oauth2Srv; // stash for cleanup
@@ -292,7 +295,7 @@ const args = parseArgs(process.argv);
 // --mock: start local mock servers automatically
 let mockChild = null;
 if (args.mock) {
-  const mockMode = (args.username || args.password) ? "oauth2" : "passphrase";
+  const mockMode = args.username || args.password ? "oauth2" : "passphrase";
   log("mock", `Starting mock server on port ${MOCK_PORT} (mode: ${mockMode})...`);
   try {
     mockChild = await spawnMockServer(mockMode);
@@ -430,19 +433,20 @@ try {
   // ------------------------------------------------------------------
   // 7. Verify no error message shown
   // ------------------------------------------------------------------
-  const errorText = await page.$eval("#login-error", el => el.textContent.trim()).catch(() => "");
+  const errorText = await page.$eval("#login-error", (el) => el.textContent.trim()).catch(() => "");
   if (errorText) {
     fail(`Login error message visible: "${errorText}"`);
   }
   log("check", "No login error visible ✓");
-
 } catch (err) {
   // Take a screenshot on failure
   try {
     const shot = `smoke-login-fail-${Date.now()}.png`;
     await page.screenshot({ path: shot, fullPage: true });
     log("screenshot", `Saved: ${shot}`);
-  } catch { /* ignore screenshot errors */ }
+  } catch {
+    /* ignore screenshot errors */
+  }
   stopMock();
   fail(String(err?.message ?? err));
 } finally {
