@@ -633,9 +633,8 @@ function findSessionByPassphrase(cfg, passphrase) {
 // token -> session
 const sessionsByToken = new Map();
 
-function buildSession({ identity, entry }) {
-  const token = `tok_${randomUUID()}`;
-  const session = {
+function materializeSession({ identity, entry, token = "" }) {
+  return {
     identity,
     displayName: String(entry.displayName || identity),
     token,
@@ -644,6 +643,11 @@ function buildSession({ identity, entry }) {
     clientId: String(entry.clientId || identity),
     wsUrl: "/ws",
   };
+}
+
+function buildSession({ identity, entry }) {
+  const token = `tok_${randomUUID()}`;
+  const session = materializeSession({ identity, entry, token });
   sessionsByToken.set(token, session);
   return session;
 }
@@ -1183,16 +1187,288 @@ const ASSISTANT_MEDIA_ONLY_COALESCE_MS = 900;
 
 const wss = new WebSocketServer({ server, path: "/ws" });
 
+// ---------------------------------------------------------------------------
+// Shared upstream connection — ONE persistent WS to CLAWeb, multiplexed
+// across all browser clients. FrontDoor owns the routing table.
+// ---------------------------------------------------------------------------
+const muxClients = new Map(); // userId → { session, queueAssistantFrame, sendClient, flushAllPending }
+const muxRooms = new Map(); // roomId → Set<same entry>
+const sharedUpstream = { ws: null, ready: false, reconnectTimer: null, serverVersion: null };
+
+function historyKeyForSession(session) {
+  return historyKey({
+    userId: session.userId,
+    roomId: session.roomId || "",
+    clientId: session.clientId,
+  });
+}
+
+function isTargetSession(target, session) {
+  if (!target || typeof target !== "object") return false;
+  const kind = String(target.kind || "").trim();
+  const id = String(target.id || "").trim();
+  if (!id) return false;
+  if (kind === "user") return String(session.userId || "").trim() === id;
+  if (kind === "room") return String(session.roomId || "").trim() === id;
+  return false;
+}
+
+function addKnownTargetSession(out, target, session) {
+  if (!session || !isTargetSession(target, session)) return;
+  const key = historyKeyForSession(session);
+  if (!key) return;
+  out.set(key, session);
+}
+
+async function resolveKnownSessionsForTarget(target) {
+  const out = new Map();
+  for (const session of sessionsByToken.values()) {
+    addKnownTargetSession(out, target, session);
+  }
+
+  const cfg = await loadLoginConfig();
+  for (const [identity, entry] of Object.entries(cfg || {})) {
+    if (!entry || typeof entry !== "object") continue;
+    addKnownTargetSession(out, target, materializeSession({ identity, entry }));
+  }
+
+  return Array.from(out.values());
+}
+
+async function resolveAssistantFrameMedia(frame, host = "") {
+  const text = String(frame.text || "").trim();
+  const incomingMediaUrl = String(frame.mediaUrl || "").trim();
+  const incomingMediaUrls = Array.isArray(frame.mediaUrls)
+    ? frame.mediaUrls.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const incomingMediaType = String(frame.mediaType || "").trim();
+  const incomingMediaFilename = String(frame.mediaFilename || frame.filename || frame.name || "").trim();
+  const incomingMediaDataUrl = String(frame.mediaDataUrl || "").trim();
+  const textMediaRefs = extractMediaRefsFromText(text);
+  let mediaUrl = incomingMediaUrl || incomingMediaUrls[0] || "";
+  let mediaType = incomingMediaType || guessMediaTypeFromRef(mediaUrl) || "";
+  let mediaFilename = incomingMediaFilename || guessFilenameFromRef(mediaUrl) || "";
+
+  if (mediaUrl && !/^https?:\/\//i.test(mediaUrl)) {
+    const resolved = await resolveAssistantMediaRef(mediaUrl, host, mediaFilename, mediaType);
+    mediaUrl = resolved.mediaUrl || mediaUrl;
+    mediaType = resolved.mediaType || mediaType;
+    mediaFilename = resolved.mediaFilename || mediaFilename;
+  }
+
+  if (!mediaUrl && textMediaRefs.length > 0) {
+    const resolved = await resolveAssistantMediaRef(textMediaRefs[0], host, mediaFilename, mediaType);
+    mediaUrl = resolved.mediaUrl || "";
+    mediaType = resolved.mediaType || mediaType;
+    mediaFilename = resolved.mediaFilename || mediaFilename;
+  }
+
+  if (!mediaType && mediaUrl) {
+    mediaType = guessMediaTypeFromRef(mediaUrl) || (await probeMediaType(mediaUrl));
+  }
+  if (!mediaFilename && mediaUrl) {
+    mediaFilename = guessFilenameFromRef(mediaUrl) || mediaFilename;
+  }
+
+  if (!mediaUrl && incomingMediaDataUrl) {
+    const resolved = await resolveAssistantMediaRef(
+      incomingMediaDataUrl,
+      host,
+      mediaFilename || "assistant-attachment.bin",
+      mediaType
+    );
+    mediaUrl = resolved.mediaUrl || "";
+    mediaType = resolved.mediaType || mediaType;
+    mediaFilename = resolved.mediaFilename || mediaFilename;
+  }
+
+  return { text, mediaUrl, mediaType, mediaFilename };
+}
+
+async function persistAssistantFrameForSession({ session, frame, host = "", reason = "offline" }) {
+  const { text, mediaUrl, mediaType, mediaFilename } = await resolveAssistantFrameMedia(frame, host);
+  if (!text && !mediaUrl) return false;
+
+  const frameId = String(frame.messageId || frame.id || "").trim();
+  const proactive = frame.proactive === true;
+  const replyTo = String(frame.replyTo || frame.parentId || "").trim() || (!proactive ? frameId : "");
+  const messageId = proactive && frameId ? frameId : `asst_${randomUUID()}`;
+
+  await appendRawMessage({
+    userId: session.userId,
+    roomId: session.roomId,
+    clientId: session.clientId,
+    message: {
+      role: "assistant",
+      text,
+      ts: inferAssistantTimestamp({ frame }),
+      messageId,
+      replyTo: replyTo || undefined,
+      replyPreview: frame.replyPreview || undefined,
+      mediaUrl: mediaUrl || undefined,
+      mediaType: mediaType || undefined,
+      mediaFilename: mediaFilename || undefined,
+    },
+  });
+
+  log("info", "assistant_frame_persisted", {
+    reason,
+    userId: session.userId,
+    roomId: session.roomId || null,
+    clientId: session.clientId,
+    messageId,
+    sourceFrameId: frameId || null,
+  });
+  return true;
+}
+
+async function persistAssistantFrameForOfflineTarget({ target, frame, deliveredHistoryKeys }) {
+  const sessions = await resolveKnownSessionsForTarget(target);
+  let persisted = 0;
+  for (const session of sessions) {
+    const key = historyKeyForSession(session);
+    if (deliveredHistoryKeys.has(key)) continue;
+    try {
+      if (await persistAssistantFrameForSession({ session, frame, reason: "offline-target" })) {
+        persisted += 1;
+      }
+    } catch (error) {
+      log("warn", "assistant_frame_offline_persist_failed", {
+        targetKind: target.kind,
+        targetId: target.id,
+        userId: session.userId,
+        roomId: session.roomId || null,
+        clientId: session.clientId,
+        error: String(error?.message || error),
+      });
+    }
+  }
+  if (persisted === 0 && deliveredHistoryKeys.size === 0) {
+    log("warn", "assistant_frame_target_not_found", {
+      targetKind: target.kind,
+      targetId: target.id,
+      messageId: String(frame.messageId || frame.id || "").trim() || null,
+    });
+  }
+}
+
+function sharedSend(frame) {
+  if (sharedUpstream.ws?.readyState === WebSocket.OPEN) {
+    sharedUpstream.ws.send(JSON.stringify(frame));
+    return true;
+  }
+  return false;
+}
+
+function connectSharedUpstream() {
+  if (sharedUpstream.reconnectTimer) {
+    clearTimeout(sharedUpstream.reconnectTimer);
+    sharedUpstream.reconnectTimer = null;
+  }
+  const ws = new WebSocket(UPSTREAM_WS);
+  sharedUpstream.ws = ws;
+  sharedUpstream.ready = false;
+
+  ws.on("open", () => {
+    metrics.ws.upstreamOpen += 1;
+    log("info", "shared_upstream_open", { upstream: UPSTREAM_WS });
+    ws.send(JSON.stringify({ type: "hello", token: UPSTREAM_TOKEN }));
+  });
+
+  ws.on("message", async (chunk) => {
+    let frame;
+    try {
+      frame = JSON.parse(String(chunk));
+    } catch {
+      return;
+    }
+
+    if (frame.type === "ready") {
+      metrics.ws.upstreamReady += 1;
+      sharedUpstream.ready = true;
+      sharedUpstream.serverVersion = frame.serverVersion || "unknown";
+      log("debug", "shared_upstream_ready");
+      // Re-announce all connected clients (handles reconnect scenario) and
+      // forward ready to each browser so it knows the channel is live.
+      for (const [, client] of muxClients) {
+        ws.send(
+          JSON.stringify({
+            type: "connect",
+            userId: client.session.userId,
+            roomId: client.session.roomId || undefined,
+            clientId: client.session.clientId,
+          })
+        );
+        client.sendClient({ type: "ready", serverVersion: sharedUpstream.serverVersion });
+      }
+      return;
+    }
+
+    if (frame.type === "message") {
+      metrics.ws.upstreamMessage += 1;
+      const { target, ...clientFrame } = frame;
+      if (!target) return;
+      const deliveredHistoryKeys = new Set();
+      if (target.kind === "user") {
+        const client = muxClients.get(target.id);
+        if (client) {
+          client.queueAssistantFrame(clientFrame);
+          deliveredHistoryKeys.add(historyKeyForSession(client.session));
+        }
+      } else if (target.kind === "room") {
+        const members = muxRooms.get(target.id);
+        if (members) {
+          for (const client of members) {
+            client.queueAssistantFrame(clientFrame);
+            deliveredHistoryKeys.add(historyKeyForSession(client.session));
+          }
+        }
+      }
+      await persistAssistantFrameForOfflineTarget({ target, frame: clientFrame, deliveredHistoryKeys });
+      return;
+    }
+
+    if (frame.type === "error") {
+      const { target, ...clientFrame } = frame;
+      if (!target) return;
+      if (target.kind === "user") {
+        const client = muxClients.get(target.id);
+        if (client) client.sendClient(clientFrame);
+      } else if (target.kind === "room") {
+        const members = muxRooms.get(target.id);
+        if (members) for (const client of members) client.sendClient(clientFrame);
+      }
+      return;
+    }
+  });
+
+  ws.on("close", (code, reason) => {
+    metrics.ws.upstreamClose += 1;
+    sharedUpstream.ready = false;
+    log("warn", "shared_upstream_close", { code, reason: reason ? String(reason) : "" });
+    for (const [, client] of muxClients) {
+      client.flushAllPending();
+      client.sendClient({ type: "error", message: "upstream_closed" });
+    }
+    sharedUpstream.reconnectTimer = setTimeout(connectSharedUpstream, 3000);
+  });
+
+  ws.on("error", (err) => {
+    metrics.ws.upstreamError += 1;
+    log("error", "shared_upstream_error", { error: String(err?.message || err) });
+  });
+}
+
+connectSharedUpstream();
+
 wss.on("connection", (clientWs, req) => {
   const remote = req?.socket?.remoteAddress || "unknown";
   const state = {
     authed: false,
     session: null,
-    upstream: null,
     clientConnected: true,
     inFlight: new Set(),
     pendingAssistant: new Map(),
-    closeTimer: null,
   };
 
   function sendClient(frame) {
@@ -1204,18 +1480,7 @@ wss.on("connection", (clientWs, req) => {
     }
   }
 
-  function scheduleCloseIfIdle() {
-    if (state.closeTimer) clearTimeout(state.closeTimer);
-    if (state.clientConnected) return;
-    state.closeTimer = setTimeout(() => {
-      if (state.inFlight.size === 0 && state.upstream) {
-        try {
-          state.upstream.close();
-        } catch {}
-        state.upstream = null;
-      }
-    }, 60_000);
-  }
+  // scheduleCloseIfIdle removed — upstream is now a shared persistent connection.
 
   async function flushPendingAssistant(key) {
     const pending = state.pendingAssistant.get(key);
@@ -1224,7 +1489,7 @@ wss.on("connection", (clientWs, req) => {
     state.pendingAssistant.delete(key);
 
     const turnId = pending.turnId;
-    const asstMessageId = `asst_${randomUUID()}`;
+    const asstMessageId = pending.proactive && turnId ? turnId : `asst_${randomUUID()}`;
     const text = String(pending.text || "").trim();
     const incomingMediaUrl = String(pending.mediaUrl || "").trim();
     const incomingMediaUrls = Array.isArray(pending.mediaUrls)
@@ -1332,7 +1597,7 @@ wss.on("connection", (clientWs, req) => {
           text,
           ts: inferAssistantTimestamp(pending),
           messageId: asstMessageId,
-          replyTo: turnId,
+          replyTo: pending.replyTo || undefined,
           replyPreview: pending.replyPreview || undefined,
           mediaUrl: mediaUrl || undefined,
           mediaType: mediaType || undefined,
@@ -1350,17 +1615,24 @@ wss.on("connection", (clientWs, req) => {
       mediaUrl: mediaUrl || undefined,
       mediaType: mediaType || undefined,
       mediaFilename: mediaFilename || undefined,
-      replyTo: pending.replyTo ?? turnId ?? undefined,
+      replyTo: pending.replyTo || undefined,
       replyPreview: pending.replyPreview || undefined,
     });
-    scheduleCloseIfIdle();
+  }
+
+  function flushAllPending() {
+    for (const key of Array.from(state.pendingAssistant.keys())) {
+      flushPendingAssistant(key).catch(() => {});
+    }
   }
 
   function queueAssistantFrame(frame) {
     const turnId = String(frame.id || "").trim() || null;
+    const proactive = frame.proactive === true;
     const key = turnId || `frame_${randomUUID()}`;
     const current = state.pendingAssistant.get(key) || {
       turnId,
+      proactive,
       frame: { ...frame },
       text: "",
       mediaUrl: "",
@@ -1368,7 +1640,7 @@ wss.on("connection", (clientWs, req) => {
       mediaType: "",
       mediaFilename: "",
       mediaDataUrl: "",
-      replyTo: frame.replyTo ?? frame.parentId ?? turnId ?? undefined,
+      replyTo: frame.replyTo ?? frame.parentId ?? (proactive ? undefined : turnId) ?? undefined,
       replyPreview: frame.replyPreview ? compactReplyPreview(String(frame.replyPreview)) : "",
       keys: new Set(),
       frames: 0,
@@ -1401,7 +1673,9 @@ wss.on("connection", (clientWs, req) => {
     const nextMediaDataUrl = String(frame.mediaDataUrl || "").trim();
     if (nextMediaDataUrl && !current.mediaDataUrl) current.mediaDataUrl = nextMediaDataUrl;
 
-    current.replyTo = current.replyTo ?? frame.replyTo ?? frame.parentId ?? turnId ?? undefined;
+    current.proactive = current.proactive || proactive;
+    current.replyTo =
+      current.replyTo ?? frame.replyTo ?? frame.parentId ?? (current.proactive ? undefined : turnId) ?? undefined;
     current.replyPreview =
       current.replyPreview || (frame.replyPreview ? compactReplyPreview(String(frame.replyPreview)) : "");
     current.frame = { ...current.frame, ...frame, mediaUrls: current.mediaUrls };
@@ -1426,87 +1700,7 @@ wss.on("connection", (clientWs, req) => {
   }
 
   function ensureUpstream() {
-    if (state.upstream && state.upstream.readyState === WebSocket.OPEN) return;
-
-    const upstream = new WebSocket(UPSTREAM_WS);
-    state.upstream = upstream;
-
-    upstream.on("open", () => {
-      metrics.ws.upstreamOpen += 1;
-      log("info", "upstream_open", {
-        userId: state.session.userId,
-        roomId: state.session.roomId,
-        clientId: state.session.clientId,
-        upstream: UPSTREAM_WS,
-      });
-      const hello = {
-        type: "hello",
-        token: UPSTREAM_TOKEN,
-        clientId: state.session.clientId,
-        userId: state.session.userId,
-        roomId: state.session.roomId || undefined,
-      };
-      upstream.send(JSON.stringify(hello));
-    });
-
-    upstream.on("message", async (chunk) => {
-      let frame;
-      try {
-        frame = JSON.parse(String(chunk));
-      } catch {
-        return;
-      }
-
-      if (frame.type === "ready") {
-        metrics.ws.upstreamReady += 1;
-        log("debug", "upstream_ready", {
-          userId: state.session.userId,
-          roomId: state.session.roomId,
-          clientId: state.session.clientId,
-        });
-        sendClient(frame);
-        return;
-      }
-
-      if (frame.type === "error") {
-        sendClient(frame);
-        return;
-      }
-
-      if (frame.type === "message") {
-        metrics.ws.upstreamMessage += 1;
-        queueAssistantFrame(frame);
-        return;
-      }
-    });
-
-    upstream.on("close", (code, reason) => {
-      metrics.ws.upstreamClose += 1;
-      for (const key of Array.from(state.pendingAssistant.keys())) {
-        flushPendingAssistant(key).catch(() => {});
-      }
-      log("warn", "upstream_close", {
-        userId: state.session.userId,
-        roomId: state.session.roomId,
-        clientId: state.session.clientId,
-        code,
-        reason: reason ? String(reason) : "",
-      });
-      sendClient({ type: "error", message: "upstream_closed" });
-      scheduleCloseIfIdle();
-    });
-
-    upstream.on("error", (err) => {
-      metrics.ws.upstreamError += 1;
-      log("error", "upstream_error", {
-        userId: state.session.userId,
-        roomId: state.session.roomId,
-        clientId: state.session.clientId,
-        error: String(err?.message || err),
-      });
-      sendClient({ type: "error", message: "upstream_error" });
-      scheduleCloseIfIdle();
-    });
+    /* no-op: replaced by shared upstream */
   }
 
   clientWs.on("message", async (chunk) => {
@@ -1559,7 +1753,31 @@ wss.on("connection", (clientWs, req) => {
         roomId: session.roomId,
         clientId: session.clientId,
       });
-      ensureUpstream();
+      // Register in shared mux routing table and announce to CLAWeb.
+      const clientEntry = { session, queueAssistantFrame, sendClient, flushAllPending };
+      muxClients.set(session.userId, clientEntry);
+      if (session.roomId) {
+        if (!muxRooms.has(session.roomId)) muxRooms.set(session.roomId, new Set());
+        muxRooms.get(session.roomId).add(clientEntry);
+      }
+      const connectFrame = {
+        type: "connect",
+        userId: session.userId,
+        roomId: session.roomId || undefined,
+        clientId: session.clientId,
+      };
+      const sent = sharedSend(connectFrame);
+      log("info", "mux_client_registered", {
+        userId: session.userId,
+        roomId: session.roomId || null,
+        clientId: session.clientId,
+        sharedUpstreamReady: sharedUpstream.ready,
+        connectFrameSent: sent,
+      });
+      // If upstream is already ready, immediately send ready to the new client.
+      if (sharedUpstream.ready) {
+        sendClient({ type: "ready", serverVersion: sharedUpstream.serverVersion });
+      }
       return;
     }
 
@@ -1598,21 +1816,20 @@ wss.on("connection", (clientWs, req) => {
     state.inFlight.add(id);
 
     try {
-      ensureUpstream();
-      if (state.upstream && state.upstream.readyState === WebSocket.OPEN) {
-        state.upstream.send(
-          JSON.stringify({
-            type: "message",
-            id,
-            text: textMsg || "(image)",
-            replyTo: replyTo || undefined,
-            replyPreview: replyPreview || undefined,
-            mediaUrl: mediaUrl || undefined,
-            mediaType: mediaType || undefined,
-            timestamp: ts,
-          })
-        );
-      } else {
+      const sent = sharedSend({
+        type: "message",
+        userId: state.session.userId,
+        roomId: state.session.roomId || undefined,
+        clientId: state.session.clientId,
+        id,
+        text: textMsg || "(image)",
+        replyTo: replyTo || undefined,
+        replyPreview: replyPreview || undefined,
+        mediaUrl: mediaUrl || undefined,
+        mediaType: mediaType || undefined,
+        timestamp: ts,
+      });
+      if (!sent) {
         sendClient({ type: "error", id, message: "upstream_not_ready" });
       }
     } catch (e) {
@@ -1623,7 +1840,26 @@ wss.on("connection", (clientWs, req) => {
 
   clientWs.on("close", () => {
     state.clientConnected = false;
-    scheduleCloseIfIdle();
+    if (state.session) {
+      // Remove from shared mux routing table and notify CLAWeb.
+      const entry = muxClients.get(state.session.userId);
+      if (entry && entry.sendClient === sendClient) {
+        muxClients.delete(state.session.userId);
+      }
+      if (state.session.roomId) {
+        const members = muxRooms.get(state.session.roomId);
+        if (members) {
+          members.delete(entry);
+          if (members.size === 0) muxRooms.delete(state.session.roomId);
+        }
+      }
+      sharedSend({
+        type: "disconnect",
+        userId: state.session.userId,
+        roomId: state.session.roomId || undefined,
+        clientId: state.session.clientId,
+      });
+    }
   });
 });
 

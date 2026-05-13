@@ -17,6 +17,8 @@ type WsEnvelope = {
   mediaType?: string;
   mediaDataUrl?: string;
   mediaFilename?: string;
+  /** Routing target injected when sending over a shared (mux) FrontDoor connection. */
+  target?: { kind: "user" | "room"; id: string };
 };
 
 type AggregateState = {
@@ -363,7 +365,7 @@ async function resolveMedia(payload: unknown): Promise<{
   return { mediaDataUrl, mediaType, mediaFilename };
 }
 
-export function createWsDeliver(ws: WebSocket, messageId: string) {
+export function createWsDeliver(ws: WebSocket, messageId: string, target?: { userId: string; roomId?: string }) {
   return async (payload: unknown, info?: DeliverInfo) => {
     const text = extractText(payload);
     const candidates = collectMediaCandidates(payload);
@@ -424,6 +426,11 @@ export function createWsDeliver(ws: WebSocket, messageId: string) {
       mediaType: state.mediaType,
       mediaDataUrl: state.mediaDataUrl,
       mediaFilename: state.mediaFilename,
+      ...(target
+        ? {
+            target: { kind: target.roomId ? ("room" as const) : ("user" as const), id: target.roomId ?? target.userId },
+          }
+        : {}),
     };
     try {
       ws.send(JSON.stringify(envelope));
