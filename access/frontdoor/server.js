@@ -83,6 +83,7 @@ const UI_TITLE = String(ENV.CLAWEB_UI_TITLE || "").trim();
 const UI_CHARACTER_NAME = String(ENV.CLAWEB_UI_CHARACTER_NAME || ENV.CLAWEB_ASSISTANT_NAME || "").trim();
 const UI_AVATAR = String(ENV.CLAWEB_UI_AVATAR || "").trim();
 const UI_AVATAR_MODE = String(ENV.CLAWEB_UI_AVATAR_MODE || "").trim();
+const UI_SEND_MODE = String(ENV.CLAWEB_UI_SEND_MODE || "").trim();
 
 if (!UPSTREAM_TOKEN) {
   console.warn(
@@ -907,6 +908,7 @@ function buildUiConfig() {
     characterName: UI_CHARACTER_NAME || undefined,
     avatar: UI_AVATAR || undefined,
     avatarMode: UI_AVATAR_MODE || undefined,
+    sendMode: UI_SEND_MODE || undefined,
   };
 }
 
@@ -1024,6 +1026,10 @@ const server = http.createServer(async (req, res) => {
     const session = await requireSessionWithIntrospect(req);
     if (!session) return json(res, 401, { ok: false, error: "unauthorized" });
 
+    if (oauth2Config.enabled) {
+      return json(res, 200, { ok: true, authMode: "oauth2", threads: [] });
+    }
+
     let cfg;
     try {
       cfg = await loadLoginConfig();
@@ -1075,6 +1081,7 @@ const server = http.createServer(async (req, res) => {
         ];
     return json(res, 200, {
       ok: true,
+      authMode: oauth2Config.enabled ? "oauth2" : "passphrase",
       loginFields,
       loginEndpoint: oauth2Config.enabled ? "/oauth2/login" : "/login",
       assistantName: String(ENV.CLAWEB_ASSISTANT_NAME || "").trim() || null,

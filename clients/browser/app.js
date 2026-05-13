@@ -48,6 +48,9 @@ async function tryReadJson(resp) {
 
 const UI_STORAGE_KEY = "claweb:ui:branding:v1";
 const SESSION_STORAGE_KEY = "claweb:session:v1";
+const SEND_MODE_STORAGE_KEY = "claweb:send-mode:v1";
+const SEND_MODE_ENTER = "enter";
+const SEND_MODE_MODIFIER = "modifier";
 const DEFAULT_UI = {
   title: "CLAWeb Demo",
   characterName: "Demo Assistant",
@@ -65,6 +68,7 @@ const state = {
   switchTarget: null,
   messageIndex: new Map(), // messageId -> { text, node }
   assistantName: null,
+  authMode: "passphrase",
   loginFields: null,
   loginEndpoint: "/login",
   uiBranding: { ...DEFAULT_UI },
@@ -74,6 +78,7 @@ const state = {
   reconnectTimer: null,
   reconnectAttempts: 0,
   manualDisconnect: false,
+  sendMode: SEND_MODE_ENTER,
 };
 
 const el = {
@@ -91,6 +96,8 @@ const el = {
   messages: document.getElementById("messages"),
   input: document.getElementById("message-input"),
   sendBtn: document.getElementById("send-btn"),
+  sendModeEnter: document.getElementById("send-mode-enter"),
+  sendModeModifier: document.getElementById("send-mode-modifier"),
   searchToggle: document.getElementById("search-toggle"),
   searchModal: document.getElementById("search-modal"),
   searchClose: document.getElementById("search-close"),
@@ -146,6 +153,89 @@ const el = {
   pickFile: document.getElementById("pick-file"),
 };
 
+function normalizeSendMode(mode) {
+  const raw = String(mode || "")
+    .trim()
+    .toLowerCase();
+  if (["modifier", "modified", "shortcut", "mod", "ctrl", "control", "cmd", "meta"].includes(raw)) {
+    return SEND_MODE_MODIFIER;
+  }
+  if (["ctrl-enter", "control-enter", "cmd-enter", "meta-enter", "shift-enter"].includes(raw)) {
+    return SEND_MODE_MODIFIER;
+  }
+  return SEND_MODE_ENTER;
+}
+
+function getConfiguredSendMode() {
+  return normalizeSendMode(window.CLAWEB_UI?.sendMode || SEND_MODE_ENTER);
+}
+
+function loadStoredSendMode() {
+  try {
+    const stored = window.localStorage.getItem(SEND_MODE_STORAGE_KEY);
+    if (stored !== null) return normalizeSendMode(stored);
+  } catch {
+    // ignore
+  }
+  return getConfiguredSendMode();
+}
+
+function persistSendMode() {
+  try {
+    window.localStorage.setItem(SEND_MODE_STORAGE_KEY, normalizeSendMode(state.sendMode));
+  } catch {
+    // ignore
+  }
+}
+
+function renderSendModeControls(mode = state.sendMode) {
+  const enterActive = normalizeSendMode(mode) === SEND_MODE_ENTER;
+  if (el.sendModeEnter) {
+    el.sendModeEnter.setAttribute("aria-pressed", enterActive ? "true" : "false");
+  }
+  if (el.sendModeModifier) {
+    el.sendModeModifier.setAttribute("aria-pressed", enterActive ? "false" : "true");
+  }
+}
+
+function syncSendModeControls() {
+  state.sendMode = normalizeSendMode(state.sendMode);
+  renderSendModeControls(state.sendMode);
+  if (el.input) {
+    el.input.setAttribute(
+      "aria-keyshortcuts",
+      state.sendMode === SEND_MODE_ENTER ? "Enter Control+Enter Meta+Enter" : "Control+Enter Meta+Enter Shift+Enter"
+    );
+  }
+}
+
+function getSelectedSendMode() {
+  return el.sendModeModifier?.getAttribute("aria-pressed") === "true" ? SEND_MODE_MODIFIER : SEND_MODE_ENTER;
+}
+
+function setSendMode(mode) {
+  state.sendMode = normalizeSendMode(mode);
+  persistSendMode();
+  syncSendModeControls();
+}
+
+function shouldSendOnEnter(event) {
+  if (event.key !== "Enter") return false;
+  if (event.isComposing || event.keyCode === 229) return false;
+  if (state.sendMode === SEND_MODE_MODIFIER) {
+    return event.ctrlKey || event.metaKey || event.shiftKey;
+  }
+  return !event.shiftKey && !event.altKey;
+}
+
+function adoptFloatingMenus() {
+  for (const node of [el.msgMenu, el.moreMenu, el.pickMenu]) {
+    if (node && node.parentElement !== document.body) {
+      document.body.appendChild(node);
+    }
+  }
+}
+
 function setStatus(text, cls) {
   if (el.statusText) el.statusText.textContent = text;
   if (el.statusDot) el.statusDot.className = `status-dot ${cls}`;
@@ -153,6 +243,13 @@ function setStatus(text, cls) {
 
 function setLoginError(msg = "") {
   el.loginError.textContent = msg;
+}
+
+function syncThreadsActionVisibility() {
+  if (!el.threadsAction) return;
+  const isOAuth2 = state.authMode === "oauth2";
+  el.threadsAction.classList.toggle("hidden", isOAuth2);
+  el.threadsAction.setAttribute("aria-hidden", isOAuth2 ? "true" : "false");
 }
 
 function getUiBranding() {
@@ -272,6 +369,7 @@ function fillAppearanceForm(values = getUiBranding()) {
   if (el.appearanceCharacter) el.appearanceCharacter.value = values.characterName || DEFAULT_UI.characterName;
   if (el.appearanceAvatarMode) el.appearanceAvatarMode.value = values.avatarMode || DEFAULT_UI.avatarMode;
   if (el.appearanceAvatar) el.appearanceAvatar.value = values.avatar || DEFAULT_UI.avatar;
+  renderSendModeControls(state.sendMode);
   syncAppearancePreview(values);
 }
 
@@ -485,7 +583,7 @@ function addMessageRich({
         ? String(replyPreview)
         : "(message not in view)";
 
-    quote.textContent = `Reply to: ${compactReplyPreview(quotedText, 72)}`;
+    quote.textContent = `回复：${compactReplyPreview(quotedText, 72)}`;
 
     const jump = () => {
       const target = state.messageIndex.get(normalizedReplyTo)?.node;
@@ -1343,12 +1441,14 @@ async function loadUiConfig() {
     const { resp, data } = await fetchJsonWithFallback("/config", "/claweb/config", { method: "GET" });
     if (resp.ok && data?.ok) {
       state.assistantName = data.assistantName ? String(data.assistantName) : null;
+      state.authMode = data.authMode === "oauth2" ? "oauth2" : "passphrase";
       if (Array.isArray(data.loginFields) && data.loginFields.length > 0) {
         state.loginFields = data.loginFields;
       }
       if (data.loginEndpoint) {
         state.loginEndpoint = String(data.loginEndpoint);
       }
+      syncThreadsActionVisibility();
     }
   } catch {
     // ignore
@@ -2249,6 +2349,10 @@ async function bootstrapApp() {
   connect();
 }
 
+adoptFloatingMenus();
+state.sendMode = loadStoredSendMode();
+syncSendModeControls();
+syncThreadsActionVisibility();
 bootstrapApp();
 
 el.loginBtn.addEventListener("click", login);
@@ -2260,12 +2364,11 @@ function autoResizeInput() {
 }
 
 el.sendBtn.addEventListener("click", sendCurrentMessage);
+el.sendModeEnter?.addEventListener("click", () => renderSendModeControls(SEND_MODE_ENTER));
+el.sendModeModifier?.addEventListener("click", () => renderSendModeControls(SEND_MODE_MODIFIER));
 el.input.addEventListener("input", autoResizeInput);
 el.input.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") return;
-
-  // 手机输入法/普通回车：换行；桌面端用 Ctrl/Cmd+Enter 发送
-  if (event.ctrlKey || event.metaKey) {
+  if (shouldSendOnEnter(event)) {
     event.preventDefault();
     sendCurrentMessage();
   }
@@ -2390,7 +2493,7 @@ if (el.msgMenuReply) {
     if (!messageId) return;
     state.composingReplyTo = messageId;
     const snippet = compactReplyPreview(messageText, 56);
-    if (el.replyBannerText) el.replyBannerText.textContent = `Replying to: ${snippet}`;
+    if (el.replyBannerText) el.replyBannerText.textContent = `正在回复：${snippet}`;
     el.replyBanner?.classList.remove("hidden");
     hideMsgMenu();
     el.input?.focus();
@@ -2542,6 +2645,7 @@ el.appearanceAvatarFile?.addEventListener("change", async (e) => {
 el.appearanceClose?.addEventListener("click", hideAppearanceModal);
 el.appearanceReset?.addEventListener("click", () => {
   fillAppearanceForm(DEFAULT_UI);
+  renderSendModeControls(getConfiguredSendMode());
 });
 el.appearanceSave?.addEventListener("click", () => {
   state.uiBranding = {
@@ -2552,12 +2656,14 @@ el.appearanceSave?.addEventListener("click", () => {
   };
   persistUiBranding();
   applyUiBranding();
+  setSendMode(getSelectedSendMode());
   hideAppearanceModal();
 });
 
 if (el.threadsAction) {
   el.threadsAction.addEventListener("click", async () => {
     hideMoreMenu();
+    if (state.authMode === "oauth2") return;
     if (!state.session) {
       addMessage("system", "请先登录。");
       return;

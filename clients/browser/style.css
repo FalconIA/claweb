@@ -660,6 +660,42 @@ button {
   gap: 10px;
 }
 
+.send-mode-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(72px, 0.7fr) minmax(0, 1.5fr);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(26, 39, 68, 0.08);
+}
+
+.send-mode-option {
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: none;
+}
+
+.send-mode-option:hover {
+  transform: none;
+}
+
+.send-mode-option[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.96);
+  color: #394056;
+  box-shadow: 0 4px 12px rgba(50, 63, 100, 0.1);
+}
+
 .reply-banner,
 .image-banner {
   background: rgba(255, 255, 255, 0.9);

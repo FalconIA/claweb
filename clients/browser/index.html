@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CLAWeb Entry</title>
-    <link rel="stylesheet" href="/claweb/style.css?v=20260317-githubclean1" />
+    <link rel="stylesheet" href="/claweb/style.css?v=20260513-sendmode-menu" />
   </head>
   <body>
     <main class="app">
@@ -160,6 +160,17 @@
                   <input id="appearance-avatar-file" type="file" accept="image/*" class="hidden" />
                 </div>
               </div>
+              <div class="row">
+                <span>发送方式</span>
+                <div class="send-mode-toggle" role="group" aria-label="发送方式">
+                  <button id="send-mode-enter" type="button" class="send-mode-option" aria-pressed="true">
+                    回车发送
+                  </button>
+                  <button id="send-mode-modifier" type="button" class="send-mode-option" aria-pressed="false">
+                    Ctrl/Shift/Cmd + 回车发送
+                  </button>
+                </div>
+              </div>
             </div>
             <div class="appearance-preview">
               <div id="appearance-preview-avatar" class="brand-avatar">🌌</div>
@@ -183,8 +194,9 @@
         characterName: "Demo Assistant",
         avatar: "🌌",
         avatarMode: "emoji",
+        sendMode: "enter",
       };
     </script>
-    <script src="/claweb/app.js?v=20260317-githubclean1"></script>
+    <script src="/claweb/app.js?v=20260513-sendmode-menu"></script>
   </body>
 </html>
