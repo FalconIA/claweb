@@ -4,6 +4,7 @@
   "channels": ["claweb"],
   "name": "CLAWeb",
   "description": "OpenClaw WebSocket channel plugin for browser clients",
+  "skills": ["./skills"],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
