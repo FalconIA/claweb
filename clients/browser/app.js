@@ -241,6 +241,13 @@ function setStatus(text, cls) {
   if (el.statusDot) el.statusDot.className = `status-dot ${cls}`;
 }
 
+function syncConnectionActionLabel() {
+  if (!el.disconnectBtn) return;
+  const reconnecting = state.manualDisconnect === true;
+  el.disconnectBtn.textContent = reconnecting ? "重新连接" : "断开连接";
+  el.disconnectBtn.setAttribute("aria-label", reconnecting ? "重新连接" : "断开连接");
+}
+
 function setLoginError(msg = "") {
   el.loginError.textContent = msg;
 }
@@ -690,6 +697,7 @@ function closeSocket(opts = {}) {
   if (manual) {
     state.manualDisconnect = true;
     cancelReconnect();
+    syncConnectionActionLabel();
   }
   if (!state.ws) return;
   const ws = state.ws;
@@ -1436,6 +1444,28 @@ async function loadRecentHistory() {
   }
 }
 
+async function reconnectManually() {
+  if (!state.session) {
+    state.manualDisconnect = false;
+    syncConnectionActionLabel();
+    showLoginPanel();
+    setLoginError("请先登录。");
+    return;
+  }
+
+  state.manualDisconnect = false;
+  syncConnectionActionLabel();
+  setStatus("同步历史中", "status-connecting");
+  if (el.disconnectBtn) el.disconnectBtn.disabled = true;
+  try {
+    await loadRecentHistory();
+    connect();
+  } finally {
+    if (el.disconnectBtn) el.disconnectBtn.disabled = false;
+    syncConnectionActionLabel();
+  }
+}
+
 async function loadUiConfig() {
   try {
     const { resp, data } = await fetchJsonWithFallback("/config", "/claweb/config", { method: "GET" });
@@ -1534,6 +1564,7 @@ function connect(opts = {}) {
   cancelReconnect();
   closeSocket({ manual: false });
   state.manualDisconnect = false;
+  syncConnectionActionLabel();
   if (opts.resetBackoff !== false) state.reconnectAttempts = 0;
   setStatus("连接中", "status-connecting");
   state.ready = false;
@@ -1573,6 +1604,7 @@ function connect(opts = {}) {
       state.ready = true;
       state.reconnectAttempts = 0;
       cancelReconnect();
+      syncConnectionActionLabel();
       setStatus("在线", "status-online");
       return;
     }
@@ -1607,6 +1639,7 @@ function connect(opts = {}) {
       if (reason.toLowerCase().includes("auth") || reason.toLowerCase().includes("token")) {
         setStatus("鉴权失败", "status-offline");
         state.manualDisconnect = true; // prevent reconnect loop
+        syncConnectionActionLabel();
         state.session = null;
         ws.close();
         showLoginPanel();
@@ -1622,6 +1655,7 @@ function connect(opts = {}) {
     if (state.ws === ws) state.ws = null;
     setStatus(state.manualDisconnect ? "已断开" : "连接中断", "status-offline");
     state.ready = false;
+    syncConnectionActionLabel();
 
     for (const pending of state.pendingById.values()) {
       markPending(pending.metaNode, "failed");
@@ -2196,6 +2230,8 @@ function logout() {
   clearStoredSession();
   state.session = null;
   state.ready = false;
+  state.manualDisconnect = false;
+  syncConnectionActionLabel();
   state.pendingById.clear();
   state.renderedMessageKeys.clear();
   state.messageIndex.clear();
@@ -2353,6 +2389,7 @@ adoptFloatingMenus();
 state.sendMode = loadStoredSendMode();
 syncSendModeControls();
 syncThreadsActionVisibility();
+syncConnectionActionLabel();
 bootstrapApp();
 
 el.loginBtn.addEventListener("click", login);
@@ -2466,8 +2503,12 @@ if (el.imageCancel) {
 if (el.fileCancel) {
   el.fileCancel.addEventListener("click", clearPendingFile);
 }
-el.disconnectBtn.addEventListener("click", () => {
+el.disconnectBtn.addEventListener("click", async () => {
   hideMoreMenu();
+  if (state.manualDisconnect) {
+    await reconnectManually();
+    return;
+  }
   closeSocket({ manual: true });
   setStatus("已断开", "status-offline");
 });
