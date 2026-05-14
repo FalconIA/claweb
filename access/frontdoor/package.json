@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "dev:frontend": "node ../../clients/browser/dev-server.cjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node --test",

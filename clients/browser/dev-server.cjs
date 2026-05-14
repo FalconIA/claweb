@@ -7,15 +7,19 @@
  * version that the reverse-proxy would return.
  *
  * Usage:
- *   node dev-server.js [PORT] [UPSTREAM]
+ *   node dev-server.js [PORT] [CLAWEB_FRONTDOOR_URL] [BIND]
  *
  * Defaults:
- *   PORT     = 8080
- *   UPSTREAM = http://10.19.29.13:30111   (override with env UPSTREAM=...)
+ *   PORT                 = 18082
+ *   BIND                 = 127.0.0.1
+ *   CLAWEB_FRONTDOOR_URL = http://127.0.0.1:18081
+ *
+ * Config precedence:
+ *   shell env > command args > clients/browser/.env > defaults
  *
  * All API calls (/login, /history, /config, /upload, /ws …) that are
- * not matched by a local file are forwarded to UPSTREAM, including the
- * WebSocket upgrade for /ws.
+ * not matched by a local file are forwarded to the configured frontdoor,
+ * including the WebSocket upgrade for /ws.
  */
 
 "use strict";
@@ -25,10 +29,20 @@ const path = require("path");
 const net = require("net");
 const { URL } = require("url");
 
-const PORT = Number(process.env.PORT || process.argv[2] || 8080);
-const UPSTREAM = (process.env.UPSTREAM || process.argv[3] || "http://10.19.29.13:30111").replace(/\/$/, "");
-
 const STATIC_ROOT = __dirname;
+const FILE_ENV = loadDotEnvFile(path.join(STATIC_ROOT, ".env"));
+const DEFAULT_PORT = 18082;
+const DEFAULT_BIND = "127.0.0.1";
+const DEFAULT_FRONTDOOR_URL = "http://127.0.0.1:18081";
+
+const PORT = Number(process.env.PORT || process.argv[2] || FILE_ENV.PORT || DEFAULT_PORT);
+const BIND = String(process.env.BIND || process.argv[4] || FILE_ENV.BIND || DEFAULT_BIND).trim() || DEFAULT_BIND;
+const FRONTDOOR_URL = (
+  process.env.CLAWEB_FRONTDOOR_URL ||
+  process.argv[3] ||
+  FILE_ENV.CLAWEB_FRONTDOOR_URL ||
+  DEFAULT_FRONTDOOR_URL
+).replace(/\/$/, "");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -47,6 +61,33 @@ const MIME = {
 
 function mimeFor(filePath) {
   return MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+
+function loadDotEnvFile(filePath) {
+  const env = {};
+  let raw;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch {
+    return env;
+  }
+
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const normalized = trimmed.startsWith("export ") ? trimmed.slice("export ".length).trim() : trimmed;
+    const eq = normalized.indexOf("=");
+    if (eq < 1) continue;
+    const key = normalized.slice(0, eq).trim();
+    const value = normalized
+      .slice(eq + 1)
+      .trim()
+      .replace(/^(['"])(.*)\1$/, "$2");
+    if (key) env[key] = value;
+  }
+
+  console.log(`[env]    Loaded ${path.relative(process.cwd(), filePath)}`);
+  return env;
 }
 
 /** Strip the /claweb prefix (mirrors frontdoor's compat alias logic). */
@@ -69,18 +110,18 @@ function resolveLocal(pathname) {
   }
 }
 
-// Parse upstream host/port once
-const upstreamUrl = new URL(UPSTREAM);
-const upstreamHost = upstreamUrl.hostname;
-const upstreamPort = Number(upstreamUrl.port) || 80;
+// Parse frontdoor host/port once
+const frontdoorUrl = new URL(FRONTDOOR_URL);
+const frontdoorHost = frontdoorUrl.hostname;
+const frontdoorPort = Number(frontdoorUrl.port) || 80;
 
 function proxyHttp(req, res) {
   const options = {
-    hostname: upstreamHost,
-    port: upstreamPort,
+    hostname: frontdoorHost,
+    port: frontdoorPort,
     path: req.url,
     method: req.method,
-    headers: { ...req.headers, host: upstreamUrl.host },
+    headers: { ...req.headers, host: frontdoorUrl.host },
   };
 
   const proxyReq = http.request(options, (proxyRes) => {
@@ -114,14 +155,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  console.log(`[proxy]  ${req.method} ${req.url} → ${UPSTREAM}`);
+  console.log(`[proxy]  ${req.method} ${req.url} → ${FRONTDOOR_URL}`);
   proxyHttp(req, res);
 });
 
 // WebSocket proxy — tunnel the TCP connection
 server.on("upgrade", (req, clientSocket, head) => {
-  console.log(`[ws]     UPGRADE ${req.url} → ${UPSTREAM}`);
-  const conn = net.connect(upstreamPort, upstreamHost, () => {
+  console.log(`[ws]     UPGRADE ${req.url} → ${FRONTDOOR_URL}`);
+  const conn = net.connect(frontdoorPort, frontdoorHost, () => {
     conn.write(
       `${req.method} ${req.url} HTTP/${req.httpVersion}\r\n` +
         Object.entries(req.headers)
@@ -135,15 +176,15 @@ server.on("upgrade", (req, clientSocket, head) => {
   });
 
   conn.on("error", (err) => {
-    console.error("[ws] upstream error:", err.message);
+    console.error("[ws] frontdoor error:", err.message);
     clientSocket.destroy();
   });
   clientSocket.on("error", () => conn.destroy());
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`CLAWeb dev server  →  http://127.0.0.1:${PORT}`);
+server.listen(PORT, BIND, () => {
+  console.log(`CLAWeb dev server  →  http://${BIND}:${PORT}`);
   console.log(`Static root        →  ${STATIC_ROOT}`);
-  console.log(`Upstream (proxy)   →  ${UPSTREAM}`);
+  console.log(`Frontdoor (proxy)  →  ${FRONTDOOR_URL}`);
   console.log("(Ctrl+C to stop)\n");
 });
