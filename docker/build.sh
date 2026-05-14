@@ -13,10 +13,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# ── resolve version from package.json ────────────────────────────────────────
-PACKAGE_JSON="${ROOT_DIR}/package.json"
+# ── resolve version from access/frontdoor/package.json ───────────────────────
+PACKAGE_JSON="${ROOT_DIR}/access/frontdoor/package.json"
 if ! command -v node &>/dev/null; then
-  echo "ERROR: node is required to read version from package.json" >&2
+  echo "ERROR: node is required to read version from access/frontdoor/package.json" >&2
   exit 1
 fi
 VERSION="$(node -p "require('${PACKAGE_JSON}').version")"

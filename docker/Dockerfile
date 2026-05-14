@@ -15,8 +15,9 @@ FROM node:22-alpine AS runtime
 USER node
 WORKDIR /app
 
-# copy server source
+# copy server source and local modules imported by server.js
 COPY --chown=node:node access/frontdoor/server.js ./server.js
+COPY --chown=node:node access/frontdoor/lib ./lib
 COPY --chown=node:node access/frontdoor/package.json ./package.json
 
 # copy production node_modules from deps stage
